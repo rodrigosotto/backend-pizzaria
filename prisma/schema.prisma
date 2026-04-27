@@ -1,0 +1,701 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// generator zod {
+//   provider = "zod-prisma-types"
+//   output   = "../src/@generated"
+// }
+// Descomente acima quando for necessário gerar schemas Zod para validação nos módulos (Parte 4+)
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  owner
+  admin
+  atendente
+  cozinha
+  entregador
+  caixa
+  cliente
+}
+
+enum PizzeriaStatus {
+  active
+  paused
+  inactive
+}
+
+enum PizzeriaUserRole {
+  admin
+  atendente
+  cozinha
+  entregador
+  caixa
+}
+
+enum OrderType {
+  delivery
+  table
+  counter
+}
+
+enum OrderStatus {
+  new
+  accepted
+  preparing
+  ready
+  delivering
+  done
+  cancelled
+}
+
+enum PaymentMethod {
+  cash
+  credit
+  debit
+  pix
+  voucher
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  refunded
+}
+
+enum TableStatus {
+  free
+  occupied
+  reserved
+}
+
+enum StockCategory {
+  frios
+  frutas
+  oleo
+  verduras
+  legumes
+  fritos
+  outros
+}
+
+enum StockUnit {
+  kg
+  unit
+  liter
+  package
+}
+
+enum DiscountType {
+  percentage
+  fixed
+}
+
+enum DeliveryZoneType {
+  neighborhood
+  radius
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Usuários do sistema (proprietários, operadores e clientes)
+model User {
+  id           String   @id @default(uuid())
+  name         String   @db.VarChar(100)
+  email        String   @unique @db.VarChar(150)
+  passwordHash String?  @map("password_hash")
+  role         UserRole
+  phone        String?  @db.VarChar(20)
+  avatarUrl    String?  @map("avatar_url")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  ownedPizzerias     Pizzeria[]         @relation("PizzeriaOwner")
+  pizzeriaRoles      UserPizzeriaRole[]
+  openedCashSessions CashSession[]      @relation("CashOpener")
+  closedCashSessions CashSession[]      @relation("CashCloser")
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+/// Pizzarias cadastradas na plataforma
+model Pizzeria {
+  id          String         @id @default(uuid())
+  ownerId     String         @map("owner_id")
+  tradeName   String         @map("trade_name") @db.VarChar(100)
+  companyName String?        @map("company_name") @db.VarChar(150)
+  cnpj        String?        @db.VarChar(18)
+  phone       String         @db.VarChar(20)
+  email       String?        @db.VarChar(150)
+  logoUrl     String?        @map("logo_url")
+  address     Json
+  status      PizzeriaStatus @default(active)
+  plan        String         @default("basic") @db.VarChar(50)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  owner           User               @relation("PizzeriaOwner", fields: [ownerId], references: [id])
+  userRoles       UserPizzeriaRole[]
+  config          PizzeriaConfig?
+  categories      ProductCategory[]
+  products        Product[]
+  crusts          Crust[]
+  customers       Customer[]
+  tables          Table[]
+  deliverers      Deliverer[]
+  deliveryZones   DeliveryZone[]
+  orders          Order[]
+  stockItems      StockItem[]
+  suppliers       Supplier[]
+  cashSessions    CashSession[]
+  loyaltyPrograms LoyaltyProgram[]
+  coupons         Coupon[]
+  conversations   ChatConversation[]
+  chatTemplates   ChatTemplate[]
+  printers        Printer[]
+  auditLogs       AuditLog[]
+
+  @@map("pizzerias")
+}
+
+/// Vínculo entre usuários e pizzarias com seus respectivos roles operacionais
+model UserPizzeriaRole {
+  id         String           @id @default(uuid())
+  userId     String           @map("user_id")
+  pizzeriaId String           @map("pizzeria_id")
+  role       PizzeriaUserRole
+  isActive   Boolean          @default(true) @map("is_active")
+  invitedAt  DateTime         @default(now()) @map("invited_at")
+  acceptedAt DateTime?        @map("accepted_at")
+
+  user     User     @relation(fields: [userId], references: [id])
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+
+  @@unique([userId, pizzeriaId])
+  @@map("user_pizzeria_roles")
+}
+
+/// Configurações operacionais de cada pizzaria
+model PizzeriaConfig {
+  id                  String   @id @default(uuid())
+  pizzeriaId          String   @unique @map("pizzeria_id")
+  acceptingOrders     Boolean  @default(true) @map("accepting_orders")
+  estimatedDelivery   Int?     @map("estimated_delivery")
+  estimatedPickup     Int?     @map("estimated_pickup")
+  serviceFeePct       Decimal  @default(10) @map("service_fee_pct") @db.Decimal(5, 2)
+  serviceFeeAppliesTo String   @default("all") @map("service_fee_applies_to")
+  minDeliveryOrder    Decimal? @map("min_delivery_order") @db.Decimal(10, 2)
+  freeDeliveryAbove   Decimal? @map("free_delivery_above") @db.Decimal(10, 2)
+  pizzaPricingRule    String   @default("most_expensive") @map("pizza_pricing_rule")
+  paymentMethods      Json     @default("[\"cash\",\"pix\",\"credit\",\"debit\"]") @map("payment_methods")
+  businessHours       Json     @map("business_hours")
+  autoMessages        Json?    @map("auto_messages")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+
+  @@map("pizzeria_configs")
+}
+
+/// Categorias do cardápio (Pizzas, Bebidas, Entradas…)
+model ProductCategory {
+  id            String  @id @default(uuid())
+  pizzeriaId    String  @map("pizzeria_id")
+  name          String  @db.VarChar(100)
+  slug          String  @db.VarChar(100)
+  sortOrder     Int     @default(0) @map("sort_order")
+  isActive      Boolean @default(true) @map("is_active")
+  availableFrom String? @map("available_from")
+  availableTo   String? @map("available_to")
+
+  products Product[]
+  pizzeria Pizzeria  @relation(fields: [pizzeriaId], references: [id])
+
+  @@unique([pizzeriaId, slug])
+  @@map("product_categories")
+}
+
+/// Produtos do cardápio
+model Product {
+  id              String   @id @default(uuid())
+  pizzeriaId      String   @map("pizzeria_id")
+  categoryId      String   @map("category_id")
+  name            String   @db.VarChar(100)
+  description     String?
+  imageUrl        String?  @map("image_url")
+  isActive        Boolean  @default(true) @map("is_active")
+  isPizza         Boolean  @default(false) @map("is_pizza")
+  maxFlavors      Int?     @map("max_flavors")
+  preparationTime Int?     @map("preparation_time")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  pizzeria   Pizzeria        @relation(fields: [pizzeriaId], references: [id])
+  category   ProductCategory @relation(fields: [categoryId], references: [id])
+  sizes      ProductSize[]
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+/// Tamanhos e preços de cada produto
+model ProductSize {
+  id         String  @id @default(uuid())
+  productId  String  @map("product_id")
+  sizeLabel  String  @map("size_label") @db.VarChar(30)
+  price      Decimal @db.Decimal(10, 2)
+  maxFlavors Int?    @map("max_flavors")
+  isActive   Boolean @default(true) @map("is_active")
+
+  product    Product     @relation(fields: [productId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("product_sizes")
+}
+
+/// Bordas recheadas disponíveis por pizzaria
+model Crust {
+  id           String  @id @default(uuid())
+  pizzeriaId   String  @map("pizzeria_id")
+  name         String  @db.VarChar(100)
+  extraPriceS  Decimal @default(0) @map("extra_price_s") @db.Decimal(10, 2)
+  extraPriceM  Decimal @default(0) @map("extra_price_m") @db.Decimal(10, 2)
+  extraPriceL  Decimal @default(0) @map("extra_price_l") @db.Decimal(10, 2)
+  extraPriceXl Decimal @default(0) @map("extra_price_xl") @db.Decimal(10, 2)
+  isActive     Boolean @default(true) @map("is_active")
+
+  pizzeria   Pizzeria    @relation(fields: [pizzeriaId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("crusts")
+}
+
+/// Clientes da pizzaria
+model Customer {
+  id            String   @id @default(uuid())
+  pizzeriaId    String   @map("pizzeria_id")
+  name          String   @db.VarChar(100)
+  phone         String   @db.VarChar(20)
+  cpf           String?  @db.VarChar(14)
+  email         String?  @db.VarChar(150)
+  loyaltyStamps Int      @default(0) @map("loyalty_stamps")
+  isBlacklisted Boolean  @default(false) @map("is_blacklisted")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  pizzeria      Pizzeria           @relation(fields: [pizzeriaId], references: [id])
+  addresses     CustomerAddress[]
+  orders        Order[]
+  conversations ChatConversation[]
+  couponUsages  CouponUsage[]
+
+  @@unique([pizzeriaId, phone])
+  @@map("customers")
+}
+
+/// Endereços de entrega dos clientes
+model CustomerAddress {
+  id           String  @id @default(uuid())
+  customerId   String  @map("customer_id")
+  label        String? @db.VarChar(50)
+  street       String  @db.VarChar(200)
+  number       String  @db.VarChar(20)
+  complement   String? @db.VarChar(100)
+  neighborhood String  @db.VarChar(100)
+  city         String  @db.VarChar(100)
+  zipCode      String  @map("zip_code") @db.VarChar(10)
+  isDefault    Boolean @default(false) @map("is_default")
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  orders   Order[]
+
+  @@map("customer_addresses")
+}
+
+/// Mesas do salão
+model Table {
+  id          String      @id @default(uuid())
+  pizzeriaId  String      @map("pizzeria_id")
+  number      Int
+  capacity    Int
+  status      TableStatus @default(free)
+  qrCodeToken String      @unique @map("qr_code_token") @db.VarChar(50)
+
+  pizzeria     Pizzeria           @relation(fields: [pizzeriaId], references: [id])
+  sessions     TableSession[]
+  orders       Order[]
+  reservations TableReservation[]
+
+  @@unique([pizzeriaId, number])
+  @@map("tables")
+}
+
+/// Sessão de atendimento de uma mesa (abertura até fechamento da conta)
+model TableSession {
+  id            String    @id @default(uuid())
+  tableId       String    @map("table_id")
+  customerName  String?   @map("customer_name") @db.VarChar(100)
+  customerPhone String?   @map("customer_phone") @db.VarChar(20)
+  customerCpf   String?   @map("customer_cpf") @db.VarChar(14)
+  openedAt      DateTime  @default(now()) @map("opened_at")
+  closedAt      DateTime? @map("closed_at")
+
+  table  Table   @relation(fields: [tableId], references: [id])
+  orders Order[]
+
+  @@map("table_sessions")
+}
+
+/// Reservas de mesa
+model TableReservation {
+  id            String   @id @default(uuid())
+  tableId       String   @map("table_id")
+  customerName  String   @map("customer_name") @db.VarChar(100)
+  customerPhone String   @map("customer_phone") @db.VarChar(20)
+  reservedAt    DateTime @map("reserved_at")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  table Table @relation(fields: [tableId], references: [id])
+
+  @@map("table_reservations")
+}
+
+/// Entregadores (motoboys) vinculados à pizzaria
+model Deliverer {
+  id         String   @id @default(uuid())
+  pizzeriaId String   @map("pizzeria_id")
+  userId     String?  @map("user_id")
+  name       String   @db.VarChar(100)
+  cpf        String?  @db.VarChar(14)
+  phone      String   @db.VarChar(20)
+  vehicle    String?  @db.VarChar(100)
+  plate      String?  @db.VarChar(20)
+  pixKey     String?  @map("pix_key") @db.VarChar(150)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+  orders   Order[]
+
+  @@map("deliverers")
+}
+
+/// Zonas de entrega (por bairro ou por raio em km)
+model DeliveryZone {
+  id         String           @id @default(uuid())
+  pizzeriaId String           @map("pizzeria_id")
+  type       DeliveryZoneType
+  name       String           @db.VarChar(100)
+  radiusKm   Decimal?         @map("radius_km") @db.Decimal(5, 2)
+  fee        Decimal          @db.Decimal(10, 2)
+  isActive   Boolean          @default(true) @map("is_active")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+
+  @@map("delivery_zones")
+}
+
+/// Programas de fidelidade configuráveis
+model LoyaltyProgram {
+  id           String   @id @default(uuid())
+  pizzeriaId   String   @map("pizzeria_id")
+  name         String   @db.VarChar(100)
+  stampsGoal   Int      @map("stamps_goal")
+  reward       String
+  validityDays Int?     @map("validity_days")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+
+  @@map("loyalty_programs")
+}
+
+/// Cupons de desconto
+model Coupon {
+  id            String       @id @default(uuid())
+  pizzeriaId    String       @map("pizzeria_id")
+  code          String       @db.VarChar(50)
+  discountType  DiscountType @map("discount_type")
+  discountValue Decimal      @map("discount_value") @db.Decimal(10, 2)
+  minOrderValue Decimal?     @map("min_order_value") @db.Decimal(10, 2)
+  maxUsesTotal  Int?         @map("max_uses_total")
+  maxUsesPerCpf Int?         @map("max_uses_per_cpf")
+  expiresAt     DateTime?    @map("expires_at")
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  pizzeria Pizzeria      @relation(fields: [pizzeriaId], references: [id])
+  usages   CouponUsage[]
+  orders   Order[]
+
+  @@unique([pizzeriaId, code])
+  @@map("coupons")
+}
+
+/// Registro de uso de cupons por cliente
+model CouponUsage {
+  id         String   @id @default(uuid())
+  couponId   String   @map("coupon_id")
+  customerId String   @map("customer_id")
+  orderId    String?  @map("order_id")
+  usedAt     DateTime @default(now()) @map("used_at")
+
+  coupon   Coupon   @relation(fields: [couponId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@map("coupon_usages")
+}
+
+/// Pedidos (delivery, mesa e balcão)
+model Order {
+  id                String         @id @default(uuid())
+  pizzeriaId        String         @map("pizzeria_id")
+  orderNumber       Int            @map("order_number")
+  type              OrderType
+  status            OrderStatus    @default(new)
+  customerId        String?        @map("customer_id")
+  tableId           String?        @map("table_id")
+  tableSessionId    String?        @map("table_session_id")
+  deliveryAddressId String?        @map("delivery_address_id")
+  delivererId       String?        @map("deliverer_id")
+  couponId          String?        @map("coupon_id")
+  subtotal          Decimal        @db.Decimal(10, 2)
+  deliveryFee       Decimal        @default(0) @map("delivery_fee") @db.Decimal(10, 2)
+  discount          Decimal        @default(0) @db.Decimal(10, 2)
+  serviceFee        Decimal        @default(0) @map("service_fee") @db.Decimal(10, 2)
+  total             Decimal        @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod?
+  paymentStatus     PaymentStatus  @default(pending) @map("payment_status")
+  notes             String?
+  cancelReason      String?        @map("cancel_reason")
+  estimatedTime     Int?           @map("estimated_time")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  acceptedAt        DateTime?      @map("accepted_at")
+  readyAt           DateTime?      @map("ready_at")
+  deliveredAt       DateTime?      @map("delivered_at")
+  cancelledAt       DateTime?      @map("cancelled_at")
+
+  pizzeria        Pizzeria         @relation(fields: [pizzeriaId], references: [id])
+  customer        Customer?        @relation(fields: [customerId], references: [id])
+  table           Table?           @relation(fields: [tableId], references: [id])
+  tableSession    TableSession?    @relation(fields: [tableSessionId], references: [id])
+  deliveryAddress CustomerAddress? @relation(fields: [deliveryAddressId], references: [id])
+  deliverer       Deliverer?       @relation(fields: [delivererId], references: [id])
+  coupon          Coupon?          @relation(fields: [couponId], references: [id])
+  items           OrderItem[]
+
+  @@unique([pizzeriaId, orderNumber])
+  @@map("orders")
+}
+
+/// Itens de cada pedido (com suporte a sabores fracionados)
+model OrderItem {
+  id            String  @id @default(uuid())
+  orderId       String  @map("order_id")
+  productId     String  @map("product_id")
+  productSizeId String? @map("product_size_id")
+  crustId       String? @map("crust_id")
+  quantity      Int
+  unitPrice     Decimal @map("unit_price") @db.Decimal(10, 2)
+  subtotal      Decimal @db.Decimal(10, 2)
+  flavors       Json?
+  notes         String?
+
+  order       Order        @relation(fields: [orderId], references: [id])
+  product     Product      @relation(fields: [productId], references: [id])
+  productSize ProductSize? @relation(fields: [productSizeId], references: [id])
+  crust       Crust?       @relation(fields: [crustId], references: [id])
+
+  @@map("order_items")
+}
+
+/// Fornecedores de insumos
+model Supplier {
+  id          String   @id @default(uuid())
+  pizzeriaId  String   @map("pizzeria_id")
+  companyName String   @map("company_name") @db.VarChar(150)
+  tradeName   String?  @map("trade_name") @db.VarChar(100)
+  cnpj        String?  @db.VarChar(18)
+  contactName String?  @map("contact_name") @db.VarChar(100)
+  phone       String   @db.VarChar(20)
+  email       String?  @db.VarChar(150)
+  address     Json?
+  categories  String[]
+  isActive    Boolean  @default(true) @map("is_active")
+
+  pizzeria   Pizzeria    @relation(fields: [pizzeriaId], references: [id])
+  stockItems StockItem[]
+
+  @@map("suppliers")
+}
+
+/// Insumos do estoque
+model StockItem {
+  id          String        @id @default(uuid())
+  pizzeriaId  String        @map("pizzeria_id")
+  supplierId  String?       @map("supplier_id")
+  name        String        @db.VarChar(100)
+  category    StockCategory
+  unit        StockUnit
+  quantity    Decimal       @db.Decimal(10, 3)
+  minQuantity Decimal       @map("min_quantity") @db.Decimal(10, 3)
+  costPerUnit Decimal?      @map("cost_per_unit") @db.Decimal(10, 2)
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  pizzeria  Pizzeria        @relation(fields: [pizzeriaId], references: [id])
+  supplier  Supplier?       @relation(fields: [supplierId], references: [id])
+  movements StockMovement[]
+
+  @@map("stock_items")
+}
+
+/// Movimentações de estoque
+model StockMovement {
+  id          String   @id @default(uuid())
+  stockItemId String   @map("stock_item_id")
+  /// entry | withdrawal | loss | adjustment | auto_debit
+  type        String   @db.VarChar(20)
+  quantity    Decimal  @db.Decimal(10, 3)
+  reason      String?
+  createdBy   String?  @map("created_by")
+  orderId     String?  @map("order_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@map("stock_movements")
+}
+
+/// Sessões de caixa
+model CashSession {
+  id               String    @id @default(uuid())
+  pizzeriaId       String    @map("pizzeria_id")
+  openedBy         String    @map("opened_by")
+  closedBy         String?   @map("closed_by")
+  initialAmount    Decimal   @map("initial_amount") @db.Decimal(10, 2)
+  totalCash        Decimal?  @map("total_cash") @db.Decimal(10, 2)
+  totalCredit      Decimal?  @map("total_credit") @db.Decimal(10, 2)
+  totalDebit       Decimal?  @map("total_debit") @db.Decimal(10, 2)
+  totalPix         Decimal?  @map("total_pix") @db.Decimal(10, 2)
+  totalVoucher     Decimal?  @map("total_voucher") @db.Decimal(10, 2)
+  totalWithdrawals Decimal   @default(0) @map("total_withdrawals") @db.Decimal(10, 2)
+  expectedBalance  Decimal?  @map("expected_balance") @db.Decimal(10, 2)
+  actualBalance    Decimal?  @map("actual_balance") @db.Decimal(10, 2)
+  difference       Decimal?  @db.Decimal(10, 2)
+  openedAt         DateTime  @default(now()) @map("opened_at")
+  closedAt         DateTime? @map("closed_at")
+
+  pizzeria    Pizzeria         @relation(fields: [pizzeriaId], references: [id])
+  opener      User             @relation("CashOpener", fields: [openedBy], references: [id])
+  closer      User?            @relation("CashCloser", fields: [closedBy], references: [id])
+  withdrawals CashWithdrawal[]
+
+  @@map("cash_sessions")
+}
+
+/// Sangrias de caixa
+model CashWithdrawal {
+  id            String   @id @default(uuid())
+  cashSessionId String   @map("cash_session_id")
+  amount        Decimal  @db.Decimal(10, 2)
+  reason        String
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id])
+
+  @@map("cash_withdrawals")
+}
+
+/// Conversas de chat por cliente
+model ChatConversation {
+  id            String    @id @default(uuid())
+  pizzeriaId    String    @map("pizzeria_id")
+  customerId    String    @map("customer_id")
+  lastMessageAt DateTime? @map("last_message_at")
+  unreadCount   Int       @default(0) @map("unread_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  pizzeria Pizzeria      @relation(fields: [pizzeriaId], references: [id])
+  customer Customer      @relation(fields: [customerId], references: [id])
+  messages ChatMessage[]
+
+  @@unique([pizzeriaId, customerId])
+  @@map("chat_conversations")
+}
+
+/// Mensagens do chat interno
+model ChatMessage {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  content        String
+  /// system | attendant | customer
+  senderType     String   @map("sender_type") @db.VarChar(20)
+  senderId       String?  @map("sender_id")
+  isAutomatic    Boolean  @default(false) @map("is_automatic")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id])
+
+  @@map("chat_messages")
+}
+
+/// Templates de mensagem rápida
+model ChatTemplate {
+  id         String   @id @default(uuid())
+  pizzeriaId String   @map("pizzeria_id")
+  title      String   @db.VarChar(100)
+  content    String
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+
+  @@map("chat_templates")
+}
+
+/// Impressoras configuradas por setor
+model Printer {
+  id         String  @id @default(uuid())
+  pizzeriaId String  @map("pizzeria_id")
+  name       String  @db.VarChar(100)
+  ip         String  @db.VarChar(50)
+  model      String? @db.VarChar(100)
+  /// kitchen | cashier | bar
+  sector     String  @db.VarChar(50)
+  isActive   Boolean @default(true) @map("is_active")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+
+  @@map("printers")
+}
+
+/// Log de auditoria de todas as ações sensíveis
+model AuditLog {
+  id         String   @id @default(uuid())
+  pizzeriaId String?  @map("pizzeria_id")
+  userId     String?  @map("user_id")
+  /// create | update | delete | cancel_order | price_change | cash_open | cash_close | cash_withdrawal | login | logout
+  action     String   @db.VarChar(50)
+  entity     String   @db.VarChar(50)
+  entityId   String?  @map("entity_id")
+  before     Json?
+  after      Json?
+  ip         String?  @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  pizzeria Pizzeria? @relation(fields: [pizzeriaId], references: [id])
+  user     User?     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}

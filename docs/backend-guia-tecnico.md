@@ -1,0 +1,780 @@
+# Backend Pizzaria — Guia Técnico Completo
+
+> **Para quem é este documento?**
+> Dev entrando no projeto agora. Aqui você vai entender o que foi construído até o momento, como rodar localmente, como funciona cada camada do código e o estado real do banco de dados. Leia do início ao fim antes de mexer em qualquer coisa.
+
+---
+
+## Sumário
+
+1. [Stack e Versões](#1-stack-e-versões)
+2. [Como rodar localmente](#2-como-rodar-localmente)
+3. [Variáveis de ambiente](#3-variáveis-de-ambiente)
+4. [Estrutura de pastas](#4-estrutura-de-pastas)
+5. [Fase 1 — Fundação e Infraestrutura](#5-fase-1--fundação-e-infraestrutura)
+6. [Fase 2 — Autenticação e Usuários](#6-fase-2--autenticação-e-usuários)
+7. [Banco de dados — estado atual](#7-banco-de-dados--estado-atual)
+8. [Endpoints disponíveis](#8-endpoints-disponíveis)
+9. [Padrões de resposta da API](#9-padrões-de-resposta-da-api)
+10. [O que ainda NÃO existe](#10-o-que-ainda-não-existe)
+
+---
+
+## 1. Stack e Versões
+
+| Tecnologia | Versão | Por quê |
+|---|---|---|
+| Node.js | 22.x | LTS atual |
+| NestJS | 11 | Framework principal |
+| Fastify | via `@nestjs/platform-fastify` | Mais rápido que Express, usado no lugar do Express padrão |
+| TypeScript | 5.7 | `module: "nodenext"` — compatibilidade máxima com ESM |
+| Prisma | 7.8 | ORM — gerencia schema e queries |
+| PostgreSQL | via Supabase | Banco de dados em produção |
+| `@nestjs/jwt` | latest | Geração e validação de JWT sem Passport |
+| `bcryptjs` | latest | Hash de senha (puro JS, sem compilação nativa) |
+
+### Por que Fastify e não Express?
+
+NestJS por padrão usa Express. Aqui trocamos pelo Fastify que é ~2x mais rápido. A troca é quase transparente no NestJS — a única diferença relevante é que o objeto `request`/`response` segue a API do Fastify, não do Express. Você raramente vai notar isso no dia a dia.
+
+### Por que `module: "nodenext"` no TypeScript?
+
+Isso habilita a resolução de módulos ESM nativa do Node.js. A consequência prática é que o `tsc` padrão do NestJS não funciona com essa configuração (ele só emite 1 arquivo JS em vez de todos). A solução foi usar **webpack** para o build:
+
+```bash
+nest build --webpack   # em vez de nest build
+```
+
+Todos os scripts já estão configurados corretamente no `package.json`.
+
+---
+
+## 2. Como rodar localmente
+
+### Pré-requisitos
+
+- Node.js 22+
+- npm
+- Conta no Supabase (ou acesso ao projeto já existente)
+- Arquivo `.env` na raiz (copie de `.env.example`)
+
+### Passo a passo
+
+**1. Instale as dependências:**
+```bash
+npm install
+```
+
+**2. Configure o `.env`:**
+```bash
+cp .env.example .env
+# Edite o .env com as credenciais reais (veja seção 3)
+```
+
+**3. Gere o Prisma Client:**
+```bash
+npm run prisma:generate
+```
+Este comando lê o `schema.prisma` e gera os tipos TypeScript do banco. Sempre rode isso depois de alterar o schema.
+
+**4. Inicie o proxy local do Prisma Postgres (Terminal 1):**
+```bash
+npm run prisma:dev
+```
+Este comando abre um proxy local na porta `51213` que conecta ao Supabase. **Sem isso o servidor NÃO consegue fazer queries no banco.**
+
+> O servidor ainda vai subir sem este proxy, mas qualquer endpoint que toque o banco vai retornar erro de conexão. Para desenvolvimento, mantenha este processo rodando em um terminal separado.
+
+**5. Inicie o servidor (Terminal 2):**
+```bash
+npm run dev
+```
+
+O servidor vai subir em `http://localhost:3000`.
+
+### URLs importantes
+
+| URL | O que é |
+|---|---|
+| `http://localhost:3000/api/v1` | Base da API |
+| `http://localhost:3000/docs` | Swagger — documentação interativa |
+| `http://localhost:3000/api/v1/health` | Health check |
+
+### Scripts disponíveis
+
+```bash
+npm run dev            # Modo desenvolvimento com hot reload (webpack watch)
+npm run build          # Build de produção
+npm run start          # Sobe o servidor sem watch (usa webpack)
+npm run start:prod     # Sobe o dist/main.js gerado pelo build
+
+npm run prisma:dev      # Proxy local Prisma Postgres (precisa estar rodando)
+npm run prisma:migrate  # Cria/aplica migrations no banco (precisa do proxy ativo)
+npm run prisma:generate # Regenera o Prisma Client a partir do schema
+
+npm test               # Testes unitários
+npm run test:e2e       # Testes end-to-end
+```
+
+---
+
+## 3. Variáveis de ambiente
+
+Copie `.env.example` para `.env` e preencha os valores:
+
+```dotenv
+# URL do Prisma Postgres — formato especial do Supabase/Prisma
+# Para desenvolvimento local: prisma+postgres://localhost:51213/?api_key=SUA_CHAVE
+# A chave de API aparece no dashboard do Supabase > Prisma Postgres
+DATABASE_URL="prisma+postgres://localhost:51213/?api_key=YOUR_KEY"
+
+# Porta do servidor (padrão 3000)
+PORT=3000
+NODE_ENV=development
+
+# Origem permitida pelo CORS — em produção coloque a URL do frontend
+CORS_ORIGIN=*
+
+# JWT — use uma string longa e aleatória em produção
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_EXPIRES_IN=7d   # Tempo de expiração do token (7d = 7 dias)
+
+# Supabase (ainda não usado diretamente no código, reservado para fases futuras)
+SUPABASE_URL=https://SEU_PROJECT.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_STORAGE_BUCKET=pizzaria-assets
+```
+
+> **Atenção:** nunca commite o arquivo `.env` real. Ele está no `.gitignore`.
+
+---
+
+## 4. Estrutura de pastas
+
+```
+backend-pizzaria/
+├── docs/                          # Documentação (você está aqui)
+├── prisma/
+│   └── schema.prisma              # Schema do banco — 30 modelos, 14 enums
+├── src/
+│   ├── app.module.ts              # Módulo raiz — registra todos os módulos
+│   ├── main.ts                    # Bootstrap — Fastify, CORS, Swagger, Guards globais
+│   ├── core/
+│   │   ├── filters/
+│   │   │   └── http-exception.filter.ts   # Formata todos os erros da API
+│   │   └── interceptors/
+│   │       ├── transform.interceptor.ts   # Envolve todas as respostas em { data, statusCode, timestamp }
+│   │       └── logging.interceptor.ts     # Loga METHOD /url STATUS +Xms no console
+│   ├── infra/
+│   │   └── database/
+│   │       ├── prisma.service.ts          # Wrapper do Prisma Client com suporte a Accelerate
+│   │       └── prisma.module.ts           # Módulo global — disponível em todos os módulos
+│   └── modules/
+│       ├── health/                # GET /health — status da API e do banco
+│       ├── audit/                 # Serviço de auditoria (log de ações no banco)
+│       ├── auth/                  # JWT, registro, login
+│       │   ├── decorators/        # @Public(), @CurrentUser(), @Roles()
+│       │   ├── dto/               # Validação de entrada (RegisterDto, LoginDto, etc.)
+│       │   ├── guards/            # JwtAuthGuard, RolesGuard
+│       │   ├── auth.service.ts
+│       │   ├── auth.controller.ts
+│       │   └── auth.module.ts
+│       └── users/                 # CRUD de usuários
+│           ├── dto/               # UpdateUserDto
+│           ├── users.service.ts
+│           ├── users.controller.ts
+│           └── users.module.ts
+├── test/
+│   └── app.e2e-spec.ts            # Teste E2E do AppController
+├── .env.example
+├── nest-cli.json
+├── package.json
+└── tsconfig.json
+```
+
+---
+
+## 5. Fase 1 — Fundação e Infraestrutura
+
+### O que foi construído
+
+A Fase 1 não entrega funcionalidades de negócio — ela monta a estrutura que tudo mais vai usar.
+
+---
+
+### 5.1 PrismaService (`src/infra/database/prisma.service.ts`)
+
+O Prisma 7 com `prisma+postgres://` (protocolo do Supabase) exige uma extensão especial chamada `withAccelerate()`. Por causa disso, não podemos usar o padrão normal de `extends PrismaClient` — o tipo muda depois do `.$extends()`.
+
+A solução foi criar um **wrapper**:
+
+```typescript
+// Acesse o banco sempre via: this.prisma.db.nomeDoModelo
+// Exemplo: this.prisma.db.user.findMany()
+//          this.prisma.db.order.create(...)
+```
+
+**Por que `.db` e não direto no service?**
+Porque `$extends(withAccelerate())` retorna um tipo diferente de `PrismaClient`. Para preservar a tipagem completa, o client estendido fica no atributo `db` do service.
+
+**Conexão lazy:** O `PrismaService` NÃO faz `$connect()` na inicialização. A conexão é estabelecida na primeira query. Isso permite o servidor subir mesmo sem o proxy rodando.
+
+**PrismaModule é `@Global()`:** Uma vez importado no `AppModule`, o `PrismaService` fica disponível em qualquer módulo sem precisar importar o `PrismaModule` novamente. Você só injeta `PrismaService` no construtor do seu service.
+
+---
+
+### 5.2 Filtro global de erros (`src/core/filters/http-exception.filter.ts`)
+
+Toda exceção não tratada passa por aqui. O filtro formata a resposta de erro num padrão consistente:
+
+```json
+{
+  "statusCode": 404,
+  "message": "Usuário não encontrado",
+  "error": "Not Found",
+  "path": "/api/v1/users/abc123",
+  "timestamp": "2026-04-26T21:00:00.000Z"
+}
+```
+
+Se você jogar um `throw new NotFoundException('Usuário não encontrado')` em qualquer lugar do código, o filtro captura e formata automaticamente.
+
+---
+
+### 5.3 Interceptors globais
+
+**TransformInterceptor** — envolve toda resposta de sucesso:
+
+```json
+{
+  "data": { ... },        // o que o seu controller retornou
+  "statusCode": 200,
+  "timestamp": "2026-04-26T21:00:00.000Z"
+}
+```
+
+**LoggingInterceptor** — no console do servidor você vai ver:
+```
+GET /api/v1/auth/me 200 +42ms
+POST /api/v1/auth/login 401 +8ms
+```
+
+---
+
+### 5.4 AuditService (`src/modules/audit/audit.service.ts`)
+
+Grava um registro na tabela `audit_logs` para rastrear ações importantes (login, criação de pedido, etc.).
+
+```typescript
+// Como usar em qualquer service:
+await this.audit.log({
+  action: 'USER_LOGIN',
+  entity: 'User',
+  entityId: user.id,
+  userId: user.id,
+  pizzeriaId: 'opcional',   // qual pizzaria estava ativa
+  before: objetoAntes,      // estado antes da mudança (para updates)
+  after: objetoDepois,      // estado depois
+  ip: 'opcional',
+});
+```
+
+**Importante:** Erros na auditoria são capturados silenciosamente — eles nunca derrubam a operação principal. Se o log falhar, o usuário não vê erro.
+
+**AuditModule é `@Global()`:** Assim como o PrismaModule, basta injetar `AuditService` no construtor sem importar o módulo.
+
+---
+
+### 5.5 HealthController (`GET /api/v1/health`)
+
+Verifica se a API está de pé e se o banco responde.
+
+```json
+// Banco conectado:
+{
+  "data": {
+    "status": "ok",
+    "database": "ok",
+    "uptime": 142.5,
+    "version": "0.0.1"
+  },
+  "statusCode": 200,
+  "timestamp": "..."
+}
+
+// Banco sem resposta:
+{
+  "data": {
+    "status": "degraded",
+    "database": "error",
+    "uptime": 142.5,
+    "version": "0.0.1"
+  }
+}
+```
+
+---
+
+### 5.6 Configurações globais (`src/main.ts`)
+
+| Configuração | Valor |
+|---|---|
+| Prefixo global | `api/v1` |
+| Swagger | `/docs` |
+| CORS | Origem configurável via `CORS_ORIGIN` |
+| Headers permitidos | `Content-Type`, `Authorization`, `X-Pizzeria-Id` |
+| ValidationPipe | `whitelist: true` — campos extras no body são rejeitados |
+
+O header `X-Pizzeria-Id` já está configurado no CORS. Ele será usado nas fases seguintes para identificar em qual pizzaria o usuário está operando.
+
+---
+
+## 6. Fase 2 — Autenticação e Usuários
+
+### Como funciona o fluxo de autenticação
+
+```
+1. POST /auth/register  →  cria conta  →  retorna JWT
+2. POST /auth/login     →  valida senha →  retorna JWT
+3. Requisições seguintes: header  Authorization: Bearer <token>
+4. JwtAuthGuard (global) valida o token automaticamente
+5. @CurrentUser() injeta os dados do token no método do controller
+```
+
+O JWT é um **token de acesso** com duração configurável via `JWT_EXPIRES_IN` (padrão: 7 dias). Não há refresh token por enquanto — quando expirar, o usuário faz login novamente.
+
+---
+
+### 6.1 Guards globais
+
+Os guards são registrados como `APP_GUARD` no `AuthModule`, o que os torna **globais automaticamente** — aplicam em todos os controllers de todos os módulos.
+
+**JwtAuthGuard**
+- Verifica se o header `Authorization: Bearer <token>` existe e é válido
+- Se não tiver token → 401 Unauthorized
+- Se o token expirou ou for inválido → 401 Unauthorized
+- Após validar, injeta o payload do JWT em `request.user`
+
+**RolesGuard**
+- Roda depois do JwtAuthGuard
+- Verifica se o `role` do usuário (presente no JWT) está na lista do decorator `@Roles()`
+- Se não tiver `@Roles()` no endpoint → passa direto (sem restrição de role)
+- Se o role não bater → 403 Forbidden
+
+**Como marcar um endpoint como público (sem JWT):**
+```typescript
+import { Public } from '../auth/decorators/public.decorator';
+
+@Public()
+@Post('alguma-rota')
+minhaRotaPublica() { ... }
+```
+
+**Como restringir por role:**
+```typescript
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
+
+@Roles(UserRole.owner, UserRole.admin)
+@Get('rota-restrita')
+rotaRestrita() { ... }
+```
+
+---
+
+### 6.2 Payload do JWT
+
+O que fica gravado dentro do token:
+
+```json
+{
+  "sub": "uuid-do-usuario",
+  "email": "joao@email.com",
+  "role": "owner",
+  "iat": 1745700000,
+  "exp": 1746304800
+}
+```
+
+- `sub` → ID do usuário (padrão JWT para "subject")
+- `role` → role global do usuário no sistema
+
+---
+
+### 6.3 Decorator `@CurrentUser()`
+
+Em qualquer controller protegido por JWT, você pode pegar os dados do usuário logado assim:
+
+```typescript
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/auth.service';
+
+@Get('meu-endpoint')
+meuEndpoint(@CurrentUser() user: JwtPayload) {
+  console.log(user.sub);    // UUID do usuário
+  console.log(user.email);
+  console.log(user.role);
+}
+```
+
+> **Por que `import type`?** Com `isolatedModules: true` no tsconfig, TypeScript exige `import type` para interfaces usadas em parâmetros de métodos decorados. Se você esquecer, o build vai reclamar com `TS1272`.
+
+---
+
+### 6.4 Roles do sistema
+
+```
+UserRole (role global do usuário na plataforma):
+  owner       → dono da pizzaria, acesso total
+  admin       → administrador operacional
+  atendente   → atende pedidos
+  cozinha     → visualiza e atualiza status de produção
+  entregador  → acessa entregas atribuídas
+  caixa       → opera o caixa
+  cliente     → cliente final (app de pedidos)
+
+PizzeriaUserRole (role do usuário dentro de uma pizzaria específica):
+  admin | atendente | cozinha | entregador | caixa
+```
+
+Um usuário pode ser `owner` globalmente mas ter roles diferentes em cada pizzaria que gerencia. Essa relação fica na tabela `user_pizzeria_roles`.
+
+---
+
+### 6.5 Hash de senha
+
+Senhas nunca são gravadas em texto puro. Usamos `bcryptjs` com `saltRounds: 12`:
+
+```
+Senha em texto: "minhaSenha123"
+Hash no banco:  "$2a$12$abc...xyz"
+```
+
+O campo no banco é `password_hash` (mapeado para `passwordHash` no TypeScript via `@map("password_hash")`).
+
+---
+
+## 7. Banco de dados — estado atual
+
+### Está gravando no Supabase?
+
+**Depende.** O schema está definido (30 modelos), o Prisma Client foi gerado, mas **as tabelas só existem no banco se a migration tiver sido executada**.
+
+Para verificar/criar as tabelas:
+
+```bash
+# Terminal 1 — proxy precisa estar ativo
+npm run prisma:dev
+
+# Terminal 2 — roda a migration
+npm run prisma:migrate
+```
+
+Se as tabelas não existirem, qualquer endpoint que toque o banco retorna erro 500.
+
+### Como saber se as tabelas existem?
+
+Acesse `GET /api/v1/health` com o proxy ativo:
+- `"database": "ok"` → banco respondendo (tabelas podem existir)
+- `"database": "error"` → sem conexão ou erro de query
+
+Ou acesse o Supabase dashboard → Table Editor e veja se as tabelas aparecem.
+
+---
+
+### Modelos do schema (30 no total)
+
+| Modelo | Tabela | O que representa |
+|---|---|---|
+| `User` | `users` | Usuários da plataforma |
+| `Pizzeria` | `pizzerias` | Pizzarias cadastradas |
+| `UserPizzeriaRole` | `user_pizzeria_roles` | Qual role o usuário tem em cada pizzaria |
+| `PizzeriaConfig` | `pizzeria_configs` | Configurações operacionais (horário, taxas, etc.) |
+| `ProductCategory` | `product_categories` | Categorias (Pizza, Bebida, Sobremesa…) |
+| `Product` | `products` | Produtos do cardápio |
+| `ProductSize` | `product_sizes` | Tamanhos de cada produto |
+| `Crust` | `crusts` | Tipos de borda |
+| `Customer` | `customers` | Clientes cadastrados na pizzaria |
+| `CustomerAddress` | `customer_addresses` | Endereços dos clientes |
+| `Table` | `tables` | Mesas da pizzaria |
+| `TableSession` | `table_sessions` | Sessões de atendimento em mesa |
+| `TableReservation` | `table_reservations` | Reservas de mesa |
+| `Deliverer` | `deliverers` | Entregadores vinculados |
+| `DeliveryZone` | `delivery_zones` | Zonas de entrega (bairro ou raio) |
+| `LoyaltyProgram` | `loyalty_programs` | Programa de fidelidade |
+| `Coupon` | `coupons` | Cupons de desconto |
+| `CouponUsage` | `coupon_usages` | Histórico de uso de cupons |
+| `Order` | `orders` | Pedidos |
+| `OrderItem` | `order_items` | Itens de cada pedido |
+| `Supplier` | `suppliers` | Fornecedores |
+| `StockItem` | `stock_items` | Itens do estoque |
+| `StockMovement` | `stock_movements` | Entradas/saídas de estoque |
+| `CashSession` | `cash_sessions` | Sessões de caixa |
+| `CashWithdrawal` | `cash_withdrawals` | Retiradas de caixa |
+| `ChatConversation` | `chat_conversations` | Conversas com clientes |
+| `ChatMessage` | `chat_messages` | Mensagens das conversas |
+| `ChatTemplate` | `chat_templates` | Templates de resposta rápida |
+| `Printer` | `printers` | Impressoras configuradas |
+| `AuditLog` | `audit_logs` | Log de auditoria de todas as ações |
+
+---
+
+## 8. Endpoints disponíveis
+
+### Legenda
+
+- Cadeado aberto = público (sem JWT)
+- Cadeado fechado = requer `Authorization: Bearer <token>`
+- Role indicada = requer aquela role no JWT
+
+---
+
+### Health
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/health` | Aberto | Status da API e do banco |
+
+---
+
+### Auth
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/register` | Aberto | Criar conta como `owner` |
+| `POST` | `/api/v1/auth/login` | Aberto | Login, retorna JWT |
+| `GET` | `/api/v1/auth/me` | JWT | Perfil do usuário logado |
+| `PATCH` | `/api/v1/auth/change-password` | JWT | Alterar senha |
+
+#### POST /auth/register
+
+```json
+// Body:
+{
+  "name": "João Silva",
+  "email": "joao@pizzaria.com",
+  "password": "minhasenha123",
+  "phone": "11999999999"    // opcional
+}
+
+// Resposta 201:
+{
+  "data": {
+    "user": {
+      "id": "uuid",
+      "name": "João Silva",
+      "email": "joao@pizzaria.com",
+      "role": "owner",
+      "phone": "11999999999",
+      "avatarUrl": null,
+      "isActive": true,
+      "createdAt": "2026-04-26T..."
+    },
+    "token": "eyJhbGci..."
+  },
+  "statusCode": 201,
+  "timestamp": "..."
+}
+```
+
+#### POST /auth/login
+
+```json
+// Body:
+{
+  "email": "joao@pizzaria.com",
+  "password": "minhasenha123"
+}
+
+// Resposta 200:
+{
+  "data": {
+    "user": {
+      "id": "uuid",
+      "name": "João Silva",
+      "email": "joao@pizzaria.com",
+      "role": "owner",
+      "phone": "11999999999",
+      "avatarUrl": null
+    },
+    "token": "eyJhbGci..."
+  }
+}
+```
+
+#### GET /auth/me
+
+```
+Header: Authorization: Bearer eyJhbGci...
+```
+
+```json
+// Resposta 200:
+{
+  "data": {
+    "id": "uuid",
+    "name": "João Silva",
+    "email": "joao@pizzaria.com",
+    "role": "owner",
+    "phone": "11999999999",
+    "avatarUrl": null,
+    "isActive": true,
+    "createdAt": "...",
+    "pizzeriaRoles": [
+      {
+        "role": "admin",
+        "pizzeria": {
+          "id": "uuid-pizzeria",
+          "tradeName": "Pizzaria do João",
+          "logoUrl": null,
+          "status": "active"
+        }
+      }
+    ]
+  }
+}
+```
+
+#### PATCH /auth/change-password
+
+```json
+// Body:
+{
+  "currentPassword": "senhaatual",
+  "newPassword": "novasenha123"
+}
+
+// Resposta 200:
+{
+  "data": { "message": "Senha alterada com sucesso" }
+}
+```
+
+---
+
+### Users
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/users` | JWT + `owner` | Listar todos os usuários |
+| `GET` | `/api/v1/users/:id` | JWT | Buscar usuário por ID |
+| `PATCH` | `/api/v1/users/:id` | JWT + `owner` ou `admin` | Atualizar dados do usuário |
+| `DELETE` | `/api/v1/users/:id` | JWT + `owner` | Desativar usuário (soft delete) |
+
+#### PATCH /users/:id
+
+```json
+// Body (todos opcionais):
+{
+  "name": "João da Silva",
+  "phone": "11988887777",
+  "avatarUrl": "https://cdn.exemplo.com/avatar.jpg"
+}
+```
+
+> `DELETE` não apaga o registro — apenas seta `isActive: false`. Para reativar um usuário, é necessário um endpoint futuro ou acesso direto ao banco.
+
+---
+
+### Swagger (documentação interativa)
+
+Acesse `http://localhost:3000/docs` com o servidor rodando. Lá você pode:
+
+- Ver todos os endpoints com seus schemas
+- Fazer chamadas direto pelo navegador
+- Autenticar com o JWT clicando em **Authorize** (ícone de cadeado)
+
+---
+
+## 9. Padrões de resposta da API
+
+### Resposta de sucesso
+
+Todo endpoint bem-sucedido retorna:
+
+```json
+{
+  "data": <o que o controller retornou>,
+  "statusCode": 200,
+  "timestamp": "2026-04-26T21:00:00.000Z"
+}
+```
+
+### Resposta de erro
+
+Todo erro retorna:
+
+```json
+{
+  "statusCode": 401,
+  "message": "Token inválido ou expirado",
+  "error": "Unauthorized",
+  "path": "/api/v1/auth/me",
+  "timestamp": "2026-04-26T21:00:00.000Z"
+}
+```
+
+### Erros de validação (body inválido)
+
+Quando o body não passa na validação do `ValidationPipe`:
+
+```json
+{
+  "statusCode": 400,
+  "message": ["email must be an email", "password must be longer than or equal to 8 characters"],
+  "error": "Bad Request",
+  "path": "/api/v1/auth/register",
+  "timestamp": "..."
+}
+```
+
+---
+
+## 10. O que ainda NÃO existe
+
+As fases seguintes vão implementar:
+
+| Fase | O que vem |
+|---|---|
+| **3** | PizzeriasModule — cadastrar pizzarias, vincular usuários, configurar a pizzaria |
+| **4** | CardápioModule — categorias, produtos, tamanhos, bordas |
+| **5** | CustomersModule — cadastro de clientes e endereços |
+| **6** | OrdersModule — criação e ciclo de vida de pedidos |
+| **7** | EstoqueModule — fornecedores, estoque, movimentações |
+| **8** | CaixaModule — abertura/fechamento de caixa, retiradas |
+| **9** | ChatModule — conversas com clientes, templates |
+| **10** | ReportsModule — relatórios, dashboard |
+
+**O que está no schema mas sem endpoints ainda:**
+- Todas as 28 tabelas além de `users` e `audit_logs`
+- O campo `X-Pizzeria-Id` no header existe no CORS mas ainda não é validado por nenhum guard
+
+**Refresh token:**
+- Não implementado. O token atual dura `JWT_EXPIRES_IN` (padrão 7 dias). Quando expirar, o usuário faz login novamente.
+
+**Upload de avatar:**
+- O campo `avatarUrl` existe no `User` mas o upload de imagem para o Supabase Storage não está implementado ainda.
+
+---
+
+## Dicas para novos devs
+
+**Ao criar um novo módulo:**
+1. Injete `PrismaService` e `AuditService` diretamente — não precisa importar os módulos deles
+2. Use `@Public()` para endpoints que não precisam de JWT
+3. Use `@Roles(UserRole.owner)` para restringir por role
+4. Use `@CurrentUser()` para pegar dados do usuário logado
+5. Lance exceções do NestJS (`NotFoundException`, `BadRequestException`, etc.) — o filtro global formata automaticamente
+
+**Ao alterar o schema.prisma:**
+1. Edite o `prisma/schema.prisma`
+2. Rode `npm run prisma:generate` para atualizar os tipos TypeScript
+3. Com o proxy ativo, rode `npm run prisma:migrate` para aplicar no banco
+4. Depois do migrate, o Supabase já tem as novas colunas/tabelas
+
+**Se o build quebrar com `TS5103 ignoreDeprecations`:**
+Abra o `tsconfig.json` e verifique se `"ignoreDeprecations"` está como `"5.0"` (não `"6.0"`). O NestJS CLI às vezes reverte esse valor.
+
+**Se o servidor não conectar ao banco:**
+Verifique se `npm run prisma:dev` está rodando em outro terminal. Sem o proxy na porta 51213, nenhuma query funciona.
