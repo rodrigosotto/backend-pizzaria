@@ -5,21 +5,22 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { SupabaseJwtService } from './supabase-jwt.service';
 
 @Module({
   imports: [
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET ?? 'change-me-in-production',
-      signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as any },
+      secret: process.env.SUPABASE_JWT_SECRET ?? 'change-me-in-production',
     }),
   ],
   controllers: [AuthController],
   providers: [
+    SupabaseJwtService,
     AuthService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [AuthService],
+  exports: [AuthService, SupabaseJwtService],
 })
 export class AuthModule {}
