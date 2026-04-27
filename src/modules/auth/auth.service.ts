@@ -61,7 +61,7 @@ export class AuthService {
       userId: user.id,
     });
 
-    return { user, token: this.signToken(user.id, user.email, user.role) };
+    return { user, accessToken: this.signToken(user.id, user.email, user.role) };
   }
 
   async login(dto: LoginDto) {
@@ -95,7 +95,7 @@ export class AuthService {
         phone: user.phone,
         avatarUrl: user.avatarUrl,
       },
-      token: this.signToken(user.id, user.email, user.role),
+      accessToken: this.signToken(user.id, user.email, user.role),
     };
   }
 
