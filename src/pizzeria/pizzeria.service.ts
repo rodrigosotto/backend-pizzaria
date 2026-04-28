@@ -1,0 +1,350 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, PizzeriaUserRole, UserRole } from '@prisma/client';
+import { PrismaService } from '../infra/database/prisma.service';
+import { AuditService } from '../modules/audit/audit.service';
+import { SupabaseStorageService } from '../infra/supabase/supabase-storage.service';
+import { CreatePizzeriaDto } from './dto/create-pizzeria.dto';
+import { UpdatePizzeriaDto } from './dto/update-pizzeria.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
+import { UpdatePizzeriaUserDto } from './dto/update-pizzeria-user.dto';
+import * as path from 'path';
+
+const PIZZERIA_SELECT = {
+  id: true,
+  tradeName: true,
+  companyName: true,
+  cnpj: true,
+  phone: true,
+  email: true,
+  logoUrl: true,
+  address: true,
+  status: true,
+  plan: true,
+  ownerId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  role: UserRole;
+}
+
+@Injectable()
+export class PizzeriaService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly storage: SupabaseStorageService,
+  ) {}
+
+  async create(dto: CreatePizzeriaDto, user: JwtPayload) {
+    const pizzeria = await this.prisma.db.$transaction(async (tx) => {
+      const created = await tx.pizzeria.create({
+        data: {
+          ownerId: user.sub,
+          tradeName: dto.tradeName,
+          companyName: dto.companyName,
+          cnpj: dto.cnpj,
+          phone: dto.phone,
+          email: dto.email,
+          address: dto.address as Prisma.InputJsonValue,
+        },
+        select: PIZZERIA_SELECT,
+      });
+
+      await tx.userPizzeriaRole.create({
+        data: {
+          userId: user.sub,
+          pizzeriaId: created.id,
+          role: PizzeriaUserRole.admin,
+        },
+      });
+
+      return created;
+    });
+
+    await this.audit.log({
+      action: 'PIZZERIA_CREATED',
+      entity: 'Pizzeria',
+      entityId: pizzeria.id,
+      userId: user.sub,
+      after: pizzeria as Record<string, unknown>,
+    });
+
+    return pizzeria;
+  }
+
+  findAll(userId: string) {
+    return this.prisma.db.pizzeria.findMany({
+      where: { ownerId: userId, status: { not: 'inactive' } },
+      select: {
+        ...PIZZERIA_SELECT,
+        _count: { select: { userRoles: { where: { isActive: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findById(pizzeriaId: string, user: JwtPayload) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    const pizzeria = await this.prisma.db.pizzeria.findUnique({
+      where: { id: pizzeriaId },
+      select: {
+        ...PIZZERIA_SELECT,
+        _count: { select: { userRoles: { where: { isActive: true } } } },
+        config: true,
+      },
+    });
+
+    if (!pizzeria) throw new NotFoundException('Pizzaria não encontrada');
+    return pizzeria;
+  }
+
+  async update(pizzeriaId: string, dto: UpdatePizzeriaDto, user: JwtPayload) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    const before = await this.prisma.db.pizzeria.findUnique({
+      where: { id: pizzeriaId },
+      select: PIZZERIA_SELECT,
+    });
+
+    if (!before) throw new NotFoundException('Pizzaria não encontrada');
+
+    const updated = await this.prisma.db.pizzeria.update({
+      where: { id: pizzeriaId },
+      data: {
+        ...dto,
+        address: dto.address
+          ? (dto.address as Prisma.InputJsonValue)
+          : undefined,
+      },
+      select: PIZZERIA_SELECT,
+    });
+
+    await this.audit.log({
+      action: 'PIZZERIA_UPDATED',
+      entity: 'Pizzeria',
+      entityId: pizzeriaId,
+      userId: user.sub,
+      pizzeriaId,
+      before: before as Record<string, unknown>,
+      after: updated as Record<string, unknown>,
+    });
+
+    return updated;
+  }
+
+  async remove(pizzeriaId: string, user: JwtPayload) {
+    const pizzeria = await this.prisma.db.pizzeria.findUnique({
+      where: { id: pizzeriaId },
+      select: { ownerId: true },
+    });
+
+    if (!pizzeria) throw new NotFoundException('Pizzaria não encontrada');
+    if (pizzeria.ownerId !== user.sub) {
+      throw new ForbiddenException('Apenas o proprietário pode excluir a pizzaria');
+    }
+
+    await this.prisma.db.pizzeria.update({
+      where: { id: pizzeriaId },
+      data: { status: 'inactive' },
+    });
+
+    await this.audit.log({
+      action: 'PIZZERIA_DELETED',
+      entity: 'Pizzeria',
+      entityId: pizzeriaId,
+      userId: user.sub,
+      pizzeriaId,
+    });
+
+    return { message: 'Pizzaria desativada com sucesso' };
+  }
+
+  async uploadLogo(
+    pizzeriaId: string,
+    file: Buffer,
+    originalName: string,
+    mimeType: string,
+    user: JwtPayload,
+  ) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    const ext = path.extname(originalName) || '.jpg';
+    const storagePath = `${pizzeriaId}/logo${ext}`;
+
+    const publicUrl = await this.storage.uploadFile(
+      'pizzeria-logos',
+      storagePath,
+      file,
+      mimeType,
+    );
+
+    await this.prisma.db.pizzeria.update({
+      where: { id: pizzeriaId },
+      data: { logoUrl: publicUrl },
+    });
+
+    await this.audit.log({
+      action: 'PIZZERIA_LOGO_UPDATED',
+      entity: 'Pizzeria',
+      entityId: pizzeriaId,
+      userId: user.sub,
+      pizzeriaId,
+      after: { logoUrl: publicUrl } as Record<string, unknown>,
+    });
+
+    return { logoUrl: publicUrl };
+  }
+
+  async findUsers(pizzeriaId: string, user: JwtPayload) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    return this.prisma.db.userPizzeriaRole.findMany({
+      where: { pizzeriaId, isActive: true },
+      select: {
+        id: true,
+        role: true,
+        invitedAt: true,
+        acceptedAt: true,
+        user: {
+          select: { id: true, name: true, email: true, avatarUrl: true },
+        },
+      },
+      orderBy: { invitedAt: 'asc' },
+    });
+  }
+
+  async inviteUser(pizzeriaId: string, dto: InviteUserDto, user: JwtPayload) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    const target = await this.prisma.db.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, name: true, email: true },
+    });
+
+    if (!target) throw new NotFoundException('Usuário não encontrado com este e-mail');
+
+    const existing = await this.prisma.db.userPizzeriaRole.findUnique({
+      where: { userId_pizzeriaId: { userId: target.id, pizzeriaId } },
+    });
+
+    if (existing?.isActive) {
+      throw new ConflictException('Este usuário já tem um vínculo ativo nesta pizzaria');
+    }
+
+    const role = await this.prisma.db.userPizzeriaRole.upsert({
+      where: { userId_pizzeriaId: { userId: target.id, pizzeriaId } },
+      update: { role: dto.role, isActive: true },
+      create: { userId: target.id, pizzeriaId, role: dto.role },
+      select: {
+        id: true,
+        role: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    await this.audit.log({
+      action: 'USER_INVITED',
+      entity: 'UserPizzeriaRole',
+      entityId: role.id,
+      userId: user.sub,
+      pizzeriaId,
+      after: { targetUserId: target.id, role: dto.role } as Record<string, unknown>,
+    });
+
+    return role;
+  }
+
+  async updateUserRole(
+    pizzeriaId: string,
+    targetUserId: string,
+    dto: UpdatePizzeriaUserDto,
+    user: JwtPayload,
+  ) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    if (targetUserId === user.sub) {
+      throw new ForbiddenException('Não é possível alterar o próprio role');
+    }
+
+    const link = await this.prisma.db.userPizzeriaRole.findUnique({
+      where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
+    });
+
+    if (!link || !link.isActive) throw new NotFoundException('Vínculo não encontrado');
+
+    const before = { role: link.role };
+
+    const updated = await this.prisma.db.userPizzeriaRole.update({
+      where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
+      data: { role: dto.role },
+      select: {
+        id: true,
+        role: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    await this.audit.log({
+      action: 'PIZZERIA_USER_ROLE_UPDATED',
+      entity: 'UserPizzeriaRole',
+      entityId: updated.id,
+      userId: user.sub,
+      pizzeriaId,
+      before: before as Record<string, unknown>,
+      after: { role: dto.role } as Record<string, unknown>,
+    });
+
+    return updated;
+  }
+
+  async removeUser(pizzeriaId: string, targetUserId: string, user: JwtPayload) {
+    await this.assertAccess(pizzeriaId, user.sub);
+
+    if (targetUserId === user.sub) {
+      throw new ForbiddenException('Não é possível remover o próprio vínculo');
+    }
+
+    const link = await this.prisma.db.userPizzeriaRole.findUnique({
+      where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
+    });
+
+    if (!link || !link.isActive) throw new NotFoundException('Vínculo não encontrado');
+
+    await this.prisma.db.userPizzeriaRole.update({
+      where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
+      data: { isActive: false },
+    });
+
+    await this.audit.log({
+      action: 'PIZZERIA_USER_REMOVED',
+      entity: 'UserPizzeriaRole',
+      entityId: link.id,
+      userId: user.sub,
+      pizzeriaId,
+      before: { targetUserId, role: link.role } as Record<string, unknown>,
+    });
+
+    return { message: 'Vínculo removido com sucesso' };
+  }
+
+  private async assertAccess(pizzeriaId: string, userId: string): Promise<void> {
+    const link = await this.prisma.db.userPizzeriaRole.findUnique({
+      where: { userId_pizzeriaId: { userId, pizzeriaId } },
+      select: { isActive: true },
+    });
+
+    if (!link?.isActive) {
+      throw new ForbiddenException('Sem acesso a esta pizzaria');
+    }
+  }
+}
