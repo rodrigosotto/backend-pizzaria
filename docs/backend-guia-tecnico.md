@@ -13,10 +13,11 @@
 4. [Estrutura de pastas](#4-estrutura-de-pastas)
 5. [Fase 1 — Fundação e Infraestrutura](#5-fase-1--fundação-e-infraestrutura)
 6. [Fase 2 — Autenticação e Usuários](#6-fase-2--autenticação-e-usuários)
-7. [Banco de dados — estado atual](#7-banco-de-dados--estado-atual)
-8. [Endpoints disponíveis](#8-endpoints-disponíveis)
-9. [Padrões de resposta da API](#9-padrões-de-resposta-da-api)
-10. [O que ainda NÃO existe](#10-o-que-ainda-não-existe)
+7. [Fase 3 — Pizzerias e Hub](#7-fase-3--pizzerias-e-hub)
+8. [Banco de dados — estado atual](#8-banco-de-dados--estado-atual)
+9. [Endpoints disponíveis](#9-endpoints-disponíveis)
+10. [Padrões de resposta da API](#10-padrões-de-resposta-da-api)
+11. [O que ainda NÃO existe](#11-o-que-ainda-não-existe)
 
 ---
 
@@ -185,6 +186,15 @@ backend-pizzaria/
 │           ├── users.service.ts
 │           ├── users.controller.ts
 │           └── users.module.ts
+│   ├── hub/                           # HubModule — painel multi-pizzaria
+│   │   ├── hub.controller.ts
+│   │   ├── hub.service.ts
+│   │   └── hub.module.ts
+│   └── pizzeria/                      # PizzeriaModule — CRUD de pizzarias
+│       ├── dto/                       # CreatePizzeriaDto, UpdatePizzeriaDto, InviteUserDto, etc.
+│       ├── pizzeria.controller.ts
+│       ├── pizzeria.service.ts
+│       └── pizzeria.module.ts
 ├── test/
 │   └── app.e2e-spec.ts            # Teste E2E do AppController
 ├── .env.example
@@ -455,7 +465,105 @@ O campo no banco é `password_hash` (mapeado para `passwordHash` no TypeScript v
 
 ---
 
-## 7. Banco de dados — estado atual
+## 7. Fase 3 — Pizzerias e Hub
+
+### O que foi construído
+
+A Fase 3 entrega o gerenciamento de pizzarias e o painel centralizado (hub) para owners que operam múltiplos estabelecimentos. Também foi adicionado o suporte a upload de imagens via Supabase Storage.
+
+---
+
+### 7.1 PizzeriaModule (`src/pizzeria/`)
+
+CRUD completo da entidade `Pizzeria` com gerenciamento de usuários vinculados.
+
+**Regra de acesso:** todo endpoint valida se o usuário tem um `UserPizzeriaRole` ativo para aquela pizzaria (`assertAccess`). Sem vínculo ativo → 403 Forbidden.
+
+**Transação atômica na criação:** ao criar uma pizzaria, o serviço usa `this.prisma.db.$transaction` para criar a `Pizzeria` e o `UserPizzeriaRole` (com role `admin`) do owner em uma única operação. Se qualquer parte falhar, o banco reverte tudo.
+
+```typescript
+// Exemplo de uso:
+// O owner cria a pizzaria → automaticamente ganha role admin nela
+// POST /api/v1/pizzerias  (body: CreatePizzeriaDto)
+```
+
+**Soft delete:** `DELETE /pizzerias/:id` não apaga o registro — apenas seta `status: 'inactive'`.
+
+**Gerenciamento de usuários:**
+- `POST /pizzerias/:id/users` → convida um usuário já cadastrado pelo e-mail, criando ou reativando o vínculo `UserPizzeriaRole`
+- `PATCH /pizzerias/:id/users/:userId` → troca o role do usuário na pizzaria
+- `DELETE /pizzerias/:id/users/:userId` → desativa o vínculo (soft delete, seta `isActive: false`)
+
+**Auditoria:** todas as operações de escrita (create, update, delete, invite, role update, user remove, logo upload) chamam `this.audit.log(...)` explicitamente.
+
+---
+
+### 7.2 SupabaseStorageService (`src/infra/supabase/supabase-storage.service.ts`)
+
+Serviço para upload de arquivos ao Supabase Storage.
+
+```typescript
+// Injetar via construtor:
+constructor(private readonly storage: SupabaseStorageService) {}
+
+// Fazer upload:
+const publicUrl = await this.storage.uploadFile(
+  'pizzeria-logos',   // nome do bucket
+  'uuid/logo.jpg',    // path dentro do bucket
+  buffer,             // Buffer do arquivo
+  'image/jpeg',       // MIME type
+);
+```
+
+O `SupabaseModule` é importado no `PizzeriaModule`. Se precisar de upload em outros módulos, importe o `SupabaseModule` neles também.
+
+**Logo da pizzaria:** `POST /pizzerias/:id/logo` recebe `multipart/form-data`, faz upload para o bucket `pizzeria-logos` com path `{pizzeriaId}/logo{ext}` e atualiza o campo `logoUrl` na tabela `pizzerias`.
+
+---
+
+### 7.3 HubModule (`src/hub/`)
+
+Painel centralizado para owners e admins que precisam operar em múltiplas pizzarias.
+
+**GET /hub/summary**
+
+Disponível apenas para `owner`. Consulta todas as pizzarias ativas do usuário e para cada uma monta um resumo com quatro métricas operacionais em paralelo (`Promise.all`):
+
+| Campo | O que conta |
+|---|---|
+| `open_orders` | Orders com status diferente de `done` e `cancelled` |
+| `revenue_today` | Soma do `total` dos Orders com `paymentStatus = paid` criados hoje |
+| `cash_open` | Se existe uma `CashSession` sem `closedAt` aberta hoje |
+| `stock_alerts` | Itens de estoque com `quantity <= min_quantity` |
+
+Se qualquer métrica falhar (banco indisponível, tabela vazia), retorna `0`/`false` silenciosamente — o summary nunca quebra por falta de dados de uma métrica.
+
+**GET /hub/pizzerias/:id/activate**
+
+Ponto de entrada para o fluxo multi-tenant. Quando o usuário seleciona uma pizzaria no frontend:
+1. Frontend chama este endpoint
+2. Backend valida o vínculo `UserPizzeriaRole` (ativo e pizzaria não inativa)
+3. Retorna `{ pizzeria_id, pizzeria_name, role }`
+4. Frontend armazena o `pizzeria_id` e o envia como `X-Pizzeria-Id` em todas as requests seguintes
+
+```json
+// Resposta 200:
+{
+  "data": {
+    "pizzeria_id": "uuid-da-pizzaria",
+    "pizzeria_name": "Pizzaria do João",
+    "role": "admin"
+  },
+  "statusCode": 200,
+  "timestamp": "..."
+}
+```
+
+---
+
+---
+
+## 8. Banco de dados — estado atual
 
 ### Está gravando no Supabase?
 
@@ -520,7 +628,7 @@ Ou acesse o Supabase dashboard → Table Editor e veja se as tabelas aparecem.
 
 ---
 
-## 8. Endpoints disponíveis
+## 9. Endpoints disponíveis
 
 ### Legenda
 
@@ -662,6 +770,32 @@ Header: Authorization: Bearer eyJhbGci...
 | `PATCH` | `/api/v1/users/:id` | JWT + `owner` ou `admin` | Atualizar dados do usuário |
 | `DELETE` | `/api/v1/users/:id` | JWT + `owner` | Desativar usuário (soft delete) |
 
+---
+
+### Pizzerias
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| `POST` | `/api/v1/pizzerias` | JWT + `owner` | Criar nova pizzaria |
+| `GET` | `/api/v1/pizzerias` | JWT + `owner` | Listar pizzarias do owner |
+| `GET` | `/api/v1/pizzerias/:id` | JWT + `owner` ou `admin` | Buscar pizzaria por ID |
+| `PATCH` | `/api/v1/pizzerias/:id` | JWT + `owner` ou `admin` | Atualizar dados da pizzaria |
+| `DELETE` | `/api/v1/pizzerias/:id` | JWT + `owner` | Desativar pizzaria (soft delete) |
+| `POST` | `/api/v1/pizzerias/:id/logo` | JWT + `owner` ou `admin` | Upload do logo (multipart/form-data) |
+| `GET` | `/api/v1/pizzerias/:id/users` | JWT + `owner` ou `admin` | Listar usuários vinculados |
+| `POST` | `/api/v1/pizzerias/:id/users` | JWT + `owner` ou `admin` | Convidar usuário por e-mail |
+| `PATCH` | `/api/v1/pizzerias/:id/users/:userId` | JWT + `owner` ou `admin` | Alterar role do usuário |
+| `DELETE` | `/api/v1/pizzerias/:id/users/:userId` | JWT + `owner` ou `admin` | Remover usuário da pizzaria |
+
+---
+
+### Hub
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/hub/summary` | JWT + `owner` | Resumo operacional de todas as pizzarias |
+| `GET` | `/api/v1/hub/pizzerias/:id/activate` | JWT + `owner` ou `admin` | Ativar contexto de uma pizzaria |
+
 #### PATCH /users/:id
 
 ```json
@@ -687,7 +821,7 @@ Acesse `http://localhost:3000/docs` com o servidor rodando. Lá você pode:
 
 ---
 
-## 9. Padrões de resposta da API
+## 10. Padrões de resposta da API
 
 ### Resposta de sucesso
 
@@ -731,13 +865,12 @@ Quando o body não passa na validação do `ValidationPipe`:
 
 ---
 
-## 10. O que ainda NÃO existe
+## 11. O que ainda NÃO existe
 
 As fases seguintes vão implementar:
 
 | Fase | O que vem |
 |---|---|
-| **3** | PizzeriasModule — cadastrar pizzarias, vincular usuários, configurar a pizzaria |
 | **4** | CardápioModule — categorias, produtos, tamanhos, bordas |
 | **5** | CustomersModule — cadastro de clientes e endereços |
 | **6** | OrdersModule — criação e ciclo de vida de pedidos |

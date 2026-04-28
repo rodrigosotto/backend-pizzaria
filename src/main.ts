@@ -3,6 +3,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import multipart from '@fastify/multipart';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -15,6 +16,9 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter({ logger: true }),
   );
+
+  // ── Multipart (file uploads) ───────────────────────────────────────────────
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB
 
   // ── Global prefix ──────────────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
