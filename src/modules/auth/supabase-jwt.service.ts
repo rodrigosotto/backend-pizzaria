@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createPublicKey } from 'crypto';
-import { JwtService } from '@nestjs/jwt';
+import * as jwt from 'jsonwebtoken';
 
 interface JwtPayload {
   sub: string;
@@ -13,8 +13,6 @@ interface JwtPayload {
 export class SupabaseJwtService implements OnModuleInit {
   private readonly logger = new Logger(SupabaseJwtService.name);
   private publicKeyPem: string | null = null;
-
-  constructor(private readonly jwtService: JwtService) {}
 
   async onModuleInit() {
     await this.loadPublicKey();
@@ -35,24 +33,39 @@ export class SupabaseJwtService implements OnModuleInit {
   }
 
   async verifyToken(token: string): Promise<JwtPayload> {
-    // Decode header to determine algorithm
     const [headerB64] = token.split('.');
-    const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString()) as { alg?: string };
+    const header = JSON.parse(
+      Buffer.from(headerB64, 'base64url').toString(),
+    ) as { alg?: string };
 
     if (header.alg === 'ES256' || header.alg === 'RS256') {
       if (!this.publicKeyPem) {
-        // Retry loading the key once if it failed on startup
         await this.loadPublicKey();
       }
-      return this.jwtService.verifyAsync<JwtPayload>(token, {
-        publicKey: this.publicKeyPem!,
-        algorithms: [header.alg as 'ES256' | 'RS256'],
+      if (!this.publicKeyPem) {
+        throw new Error('Supabase public key unavailable');
+      }
+      return new Promise<JwtPayload>((resolve, reject) => {
+        jwt.verify(
+          token,
+          this.publicKeyPem!,
+          { algorithms: [header.alg as 'ES256' | 'RS256'] },
+          (err, decoded) => {
+            if (err) reject(err);
+            else resolve(decoded as JwtPayload);
+          },
+        );
       });
     }
 
-    // HS256 fallback (older Supabase projects)
-    return this.jwtService.verifyAsync<JwtPayload>(token, {
-      secret: process.env.SUPABASE_JWT_SECRET,
+    // HS256 fallback (projetos Supabase mais antigos)
+    const secret = process.env.SUPABASE_JWT_SECRET;
+    if (!secret) throw new Error('SUPABASE_JWT_SECRET não configurado para HS256');
+    return new Promise<JwtPayload>((resolve, reject) => {
+      jwt.verify(token, secret, { algorithms: ['HS256'] }, (err, decoded) => {
+        if (err) reject(err);
+        else resolve(decoded as JwtPayload);
+      });
     });
   }
 }
