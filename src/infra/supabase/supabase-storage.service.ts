@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 export class SupabaseStorageService {
   private readonly logger = new Logger(SupabaseStorageService.name);
   private _client: SupabaseClient | null = null;
+  private readonly ensuredBuckets = new Set<string>();
 
   private get client(): SupabaseClient {
     if (!this._client) {
@@ -22,12 +23,30 @@ export class SupabaseStorageService {
     return this._client;
   }
 
+  private async ensureBucket(bucket: string): Promise<void> {
+    if (this.ensuredBuckets.has(bucket)) return;
+
+    const { data: existing } = await this.client.storage.getBucket(bucket);
+    if (!existing) {
+      const { error } = await this.client.storage.createBucket(bucket, { public: true });
+      if (error) {
+        this.logger.error(`Falha ao criar bucket "${bucket}": ${error.message}`);
+        throw new InternalServerErrorException(`Falha ao criar bucket: ${error.message}`);
+      }
+      this.logger.log(`Bucket "${bucket}" criado automaticamente`);
+    }
+
+    this.ensuredBuckets.add(bucket);
+  }
+
   async uploadFile(
     bucket: string,
     path: string,
     file: Buffer,
     contentType: string,
   ): Promise<string> {
+    await this.ensureBucket(bucket);
+
     const { error } = await this.client.storage
       .from(bucket)
       .upload(path, file, { contentType, upsert: true });
