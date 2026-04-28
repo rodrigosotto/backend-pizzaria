@@ -14,10 +14,12 @@
 5. [Fase 1 — Fundação e Infraestrutura](#5-fase-1--fundação-e-infraestrutura)
 6. [Fase 2 — Autenticação e Usuários](#6-fase-2--autenticação-e-usuários)
 7. [Fase 3 — Pizzerias e Hub](#7-fase-3--pizzerias-e-hub)
-8. [Banco de dados — estado atual](#8-banco-de-dados--estado-atual)
-9. [Endpoints disponíveis](#9-endpoints-disponíveis)
-10. [Padrões de resposta da API](#10-padrões-de-resposta-da-api)
-11. [O que ainda NÃO existe](#11-o-que-ainda-não-existe)
+8. [Fase 4 — Cardápio](#8-fase-4--cardápio)
+9. [Fase 5 — Clientes](#9-fase-5--clientes)
+10. [Banco de dados — estado atual](#10-banco-de-dados--estado-atual)
+11. [Endpoints disponíveis](#11-endpoints-disponíveis)
+12. [Padrões de resposta da API](#12-padrões-de-resposta-da-api)
+13. [O que ainda NÃO existe](#13-o-que-ainda-não-existe)
 
 ---
 
@@ -190,11 +192,25 @@ backend-pizzaria/
 │   │   ├── hub.controller.ts
 │   │   ├── hub.service.ts
 │   │   └── hub.module.ts
-│   └── pizzeria/                      # PizzeriaModule — CRUD de pizzarias
-│       ├── dto/                       # CreatePizzeriaDto, UpdatePizzeriaDto, InviteUserDto, etc.
-│       ├── pizzeria.controller.ts
-│       ├── pizzeria.service.ts
-│       └── pizzeria.module.ts
+│   ├── pizzeria/                      # PizzeriaModule — CRUD de pizzarias
+│   │   ├── dto/                       # CreatePizzeriaDto, UpdatePizzeriaDto, InviteUserDto, etc.
+│   │   ├── pizzeria.controller.ts
+│   │   ├── pizzeria.service.ts
+│   │   └── pizzeria.module.ts
+│   ├── cardapio/                      # CardápioModule — cardápio completo
+│   │   ├── dto/                       # DTOs de categoria, produto, tamanho, borda, combo
+│   │   ├── categories.controller.ts
+│   │   ├── products.controller.ts
+│   │   ├── crusts.controller.ts
+│   │   ├── combos.controller.ts
+│   │   ├── public-menu.controller.ts  # Endpoint público para QR Code (sem JWT)
+│   │   ├── cardapio.service.ts
+│   │   └── cardapio.module.ts
+│   └── customers/                     # CustomersModule — clientes e endereços
+│       ├── dto/                       # CreateCustomerDto, UpdateCustomerDto, CreateAddressDto, etc.
+│       ├── customers.controller.ts
+│       ├── customers.service.ts
+│       └── customers.module.ts
 ├── test/
 │   └── app.e2e-spec.ts            # Teste E2E do AppController
 ├── .env.example
@@ -563,7 +579,151 @@ Ponto de entrada para o fluxo multi-tenant. Quando o usuário seleciona uma pizz
 
 ---
 
-## 8. Banco de dados — estado atual
+---
+
+## 8. Fase 4 — Cardápio
+
+### O que foi construído
+
+Módulo completo de gestão do cardápio: categorias, produtos, tamanhos, bordas, combos e cardápio público para clientes via QR Code.
+
+---
+
+### 8.1 CardápioModule (`src/cardapio/`)
+
+Todos os endpoints exigem JWT + `X-Pizzeria-Id` (exceto o cardápio público). O `PizzeriaContextGuard` valida o header e garante que o usuário tem vínculo ativo na pizzaria.
+
+---
+
+### 8.2 Categorias (`/menu/categories`)
+
+CRUD de categorias com controle de ordem de exibição e janela de disponibilidade por horário.
+
+- **Slug único por pizzaria** — `ConflictException` ao duplicar dentro da mesma pizzaria
+- **Remoção bloqueada** se a categoria possuir produtos vinculados
+- **Campos de horário** (`availableFrom`, `availableTo` no formato `HH:MM`) implementam RF18 — ex: categoria "Pizzas" disponível apenas a partir das 18h
+
+---
+
+### 8.3 Produtos (`/menu/products`)
+
+Produtos do cardápio com suporte a pizzas (sabores/bordas) e itens simples (bebidas, entradas).
+
+**Campos relevantes:**
+
+| Campo | Descrição |
+|---|---|
+| `isPizza` | Identifica pizzas — habilita lógica de sabores e bordas no frontend |
+| `maxFlavors` | Máximo de sabores globais do produto |
+| `flavorPriceRule` | **RN01** — regra de cálculo de preço para pizza fracionada |
+| `isActive` | Ativar/desativar temporariamente sem excluir |
+
+**Regra de preço fracionado (RN01):**
+
+```
+FlavorPriceRule:
+  highest  → preço do sabor mais caro (padrão)
+  average  → média dos preços dos sabores selecionados
+  fixed    → preço fixo do tamanho, independente dos sabores
+```
+
+Essa configuração é por produto. O OrdersModule (Fase 6) usa esse valor ao calcular o total do pedido com múltiplos sabores.
+
+**Tamanhos** são sub-recursos do produto (`/menu/products/:id/sizes`) e podem sobrescrever o `maxFlavors` por tamanho específico.
+
+**Upload de imagem** via `POST /menu/products/:id/image` (multipart/form-data) → salva no bucket `product-images` no Supabase Storage.
+
+---
+
+### 8.4 Bordas (`/menu/crusts`)
+
+Bordas recheadas com preço extra configurável por tamanho (P/M/G/GG). Os campos `extraPriceS/M/L/Xl` são `Decimal` com default `0`.
+
+---
+
+### 8.5 Combos (`/menu/combos`)
+
+Agrupamento de produtos com preço especial (RF19).
+
+- **Criação atômica** — combo + itens criados em `$transaction`
+- **Mínimo 2 itens** — validado no DTO com `@ArrayMinSize(2)`
+- **Validação de pertencimento** — cada produto é verificado como pertencente à pizzaria antes de criar
+- **Vigência opcional** — `validFrom` / `validTo` para promoções com prazo
+- **Gerenciamento de itens** separado: `POST /combos/:id/items` e `DELETE /combos/:id/items/:itemId`
+
+---
+
+### 8.6 Cardápio Público — QR Code (`GET /public/menu/:pizzeriaId`)
+
+Endpoint sem autenticação (`@Public()`). Retorna o cardápio completo para exibição no app do cliente ao escanear o QR Code (RF17).
+
+```json
+// GET /api/v1/public/menu/:pizzeriaId
+{
+  "data": {
+    "pizzeria": { "id", "tradeName", "logoUrl", "phone", "address" },
+    "categories": [
+      {
+        "id", "name", "slug", "sortOrder", "availableFrom", "availableTo",
+        "products": [
+          {
+            "id", "name", "description", "imageUrl",
+            "isPizza", "maxFlavors", "flavorPriceRule", "preparationTime",
+            "sizes": [{ "id", "sizeLabel", "price", "maxFlavors" }]
+          }
+        ]
+      }
+    ],
+    "crusts": [{ "id", "name", "extraPriceS", "extraPriceM", "extraPriceL", "extraPriceXl" }],
+    "combos": [{ "id", "name", "description", "imageUrl", "price", "validFrom", "validTo", "items": [...] }]
+  }
+}
+```
+
+Combos são filtrados pela vigência no momento da requisição (`validFrom <= now <= validTo`).
+
+---
+
+## 9. Fase 5 — Clientes
+
+### O que foi construído
+
+CRUD completo de clientes com múltiplos endereços, busca rápida por telefone, programa de fidelidade (selos) e blacklist.
+
+---
+
+### 9.1 CustomersModule (`src/customers/`)
+
+Todos os endpoints exigem JWT + `X-Pizzeria-Id`. Clientes são isolados por pizzaria (`pizzeriaId`).
+
+---
+
+### 9.2 Clientes (`/customers`)
+
+**Unicidade:** telefone único por pizzaria — `ConflictException` ao duplicar.
+
+**Busca:** `GET /customers?search=...` filtra por nome, telefone ou CPF (case-insensitive).
+
+**Busca rápida por telefone:** `GET /customers/by-phone/:phone` — endpoint dedicado para uso ao abrir um novo pedido sem precisar listar todos os clientes (RF54).
+
+**Histórico:** `GET /customers/:id` retorna dados completos + últimos 20 pedidos.
+
+**Fidelidade (RF52):** campo `loyaltyStamps` — atualizado via `PATCH /customers/:id` com `loyaltyStamps`. O OrdersModule (Fase 6) incrementa automaticamente ao finalizar um pedido.
+
+**Blacklist (RF53):** campo `isBlacklisted` — bloqueio via `PATCH /customers/:id`. A remoção de clientes com pedidos é bloqueada; o sistema orienta usar `isBlacklisted`.
+
+---
+
+### 9.3 Endereços (`/customers/:id/addresses`)
+
+- **Endereço padrão** gerenciado por transação — ao marcar `isDefault: true` em um endereço, todos os outros são desmarcados automaticamente na mesma operação
+- Endereços são listados com o padrão primeiro (`orderBy: [{ isDefault: 'desc' }]`)
+- O `CustomersModule` exporta `CustomersService` para uso pelo OrdersModule
+
+---
+
+
+## 10. Banco de dados — estado atual
 
 ### Está gravando no Supabase?
 
@@ -628,7 +788,7 @@ Ou acesse o Supabase dashboard → Table Editor e veja se as tabelas aparecem.
 
 ---
 
-## 9. Endpoints disponíveis
+## 11. Endpoints disponíveis
 
 ### Legenda
 
@@ -796,6 +956,90 @@ Header: Authorization: Bearer eyJhbGci...
 | `GET` | `/api/v1/hub/summary` | JWT + `owner` | Resumo operacional de todas as pizzarias |
 | `GET` | `/api/v1/hub/pizzerias/:id/activate` | JWT + `owner` ou `admin` | Ativar contexto de uma pizzaria |
 
+---
+
+### Cardápio — Categorias
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/menu/categories` | owner/admin/atendente | Listar categorias ordenadas |
+| `POST` | `/api/v1/menu/categories` | owner/admin | Criar categoria |
+| `PATCH` | `/api/v1/menu/categories/:id` | owner/admin | Atualizar categoria |
+| `DELETE` | `/api/v1/menu/categories/:id` | owner/admin | Remover (bloqueado se tiver produtos) |
+
+---
+
+### Cardápio — Produtos
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/menu/products` | owner/admin/atendente | Listar com filtro opcional por `?categoryId=` |
+| `GET` | `/api/v1/menu/products/:id` | owner/admin/atendente | Buscar produto com tamanhos |
+| `POST` | `/api/v1/menu/products` | owner/admin | Criar produto |
+| `PATCH` | `/api/v1/menu/products/:id` | owner/admin | Atualizar produto |
+| `DELETE` | `/api/v1/menu/products/:id` | owner/admin | Remover produto |
+| `POST` | `/api/v1/menu/products/:id/image` | owner/admin | Upload de imagem (multipart/form-data) |
+| `GET` | `/api/v1/menu/products/:id/sizes` | owner/admin/atendente | Listar tamanhos |
+| `POST` | `/api/v1/menu/products/:id/sizes` | owner/admin | Adicionar tamanho |
+| `PATCH` | `/api/v1/menu/products/:id/sizes/:sizeId` | owner/admin | Atualizar tamanho |
+| `DELETE` | `/api/v1/menu/products/:id/sizes/:sizeId` | owner/admin | Remover tamanho |
+
+---
+
+### Cardápio — Bordas
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/menu/crusts` | owner/admin/atendente | Listar bordas |
+| `POST` | `/api/v1/menu/crusts` | owner/admin | Criar borda |
+| `PATCH` | `/api/v1/menu/crusts/:id` | owner/admin | Atualizar borda |
+| `DELETE` | `/api/v1/menu/crusts/:id` | owner/admin | Remover borda |
+
+---
+
+### Cardápio — Combos
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/menu/combos` | owner/admin/atendente | Listar combos com itens |
+| `GET` | `/api/v1/menu/combos/:id` | owner/admin/atendente | Buscar combo por ID |
+| `POST` | `/api/v1/menu/combos` | owner/admin | Criar combo (mín. 2 itens) |
+| `PATCH` | `/api/v1/menu/combos/:id` | owner/admin | Atualizar dados do combo |
+| `DELETE` | `/api/v1/menu/combos/:id` | owner/admin | Remover combo |
+| `POST` | `/api/v1/menu/combos/:id/items` | owner/admin | Adicionar item ao combo |
+| `DELETE` | `/api/v1/menu/combos/:id/items/:itemId` | owner/admin | Remover item do combo |
+
+---
+
+### Cardápio Público (sem autenticação)
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/public/menu/:pizzeriaId` | Aberto | Cardápio completo para QR Code (RF17) |
+
+---
+
+### Clientes
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/customers` | owner/admin/atendente | Listar com `?search=` (nome, telefone, CPF) |
+| `GET` | `/api/v1/customers/by-phone/:phone` | owner/admin/atendente | Busca rápida ao abrir pedido |
+| `GET` | `/api/v1/customers/:id` | owner/admin/atendente | Perfil + últimos 20 pedidos |
+| `POST` | `/api/v1/customers` | owner/admin/atendente | Cadastrar cliente |
+| `PATCH` | `/api/v1/customers/:id` | owner/admin/atendente | Atualizar dados, blacklist e selos |
+| `DELETE` | `/api/v1/customers/:id` | owner/admin | Remover (bloqueado se tiver pedidos) |
+| `GET` | `/api/v1/customers/:id/addresses` | owner/admin/atendente | Listar endereços |
+| `POST` | `/api/v1/customers/:id/addresses` | owner/admin/atendente | Adicionar endereço |
+| `PATCH` | `/api/v1/customers/:id/addresses/:addressId` | owner/admin/atendente | Atualizar endereço |
+| `DELETE` | `/api/v1/customers/:id/addresses/:addressId` | owner/admin/atendente | Remover endereço |
+
+---
+
 #### PATCH /users/:id
 
 ```json
@@ -821,7 +1065,7 @@ Acesse `http://localhost:3000/docs` com o servidor rodando. Lá você pode:
 
 ---
 
-## 10. Padrões de resposta da API
+## 12. Padrões de resposta da API
 
 ### Resposta de sucesso
 
@@ -865,14 +1109,14 @@ Quando o body não passa na validação do `ValidationPipe`:
 
 ---
 
-## 11. O que ainda NÃO existe
+## 13. O que ainda NÃO existe
 
 As fases seguintes vão implementar:
 
 | Fase | O que vem |
 |---|---|
-| **4** | CardápioModule — categorias, produtos, tamanhos, bordas |
-| **5** | CustomersModule — cadastro de clientes e endereços |
+| ~~**4**~~ | ~~CardápioModule~~ ✅ Implementado |
+| ~~**5**~~ | ~~CustomersModule~~ ✅ Implementado |
 | **6** | OrdersModule — criação e ciclo de vida de pedidos |
 | **7** | EstoqueModule — fornecedores, estoque, movimentações |
 | **8** | CaixaModule — abertura/fechamento de caixa, retiradas |
@@ -881,7 +1125,7 @@ As fases seguintes vão implementar:
 
 **O que está no schema mas sem endpoints ainda:**
 - Todas as 28 tabelas além de `users` e `audit_logs`
-- O campo `X-Pizzeria-Id` no header existe no CORS mas ainda não é validado por nenhum guard
+- O campo `X-Pizzeria-Id` é validado pelo `PizzeriaContextGuard` em todos os endpoints com `@RequiresPizzeria()` (Fases 4, 5 em diante)
 
 **Refresh token:**
 - Não implementado. O token atual dura `JWT_EXPIRES_IN` (padrão 7 dias). Quando expirar, o usuário faz login novamente.
