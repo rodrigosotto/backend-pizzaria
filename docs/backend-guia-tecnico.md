@@ -1324,6 +1324,106 @@ Header: Authorization: Bearer eyJhbGci...
 
 ---
 
+## Fase 10 — ReportsModule ✅ Implementado
+
+> **Fonte:** `src/reports/`
+
+### ReportsModule (`src/reports/`)
+
+Módulo de relatórios gerenciais multi-tenant. Todos os endpoints exigem `X-Pizzeria-Id` e estão protegidos por role.
+
+**Arquivo:** `src/reports/reports.module.ts`
+**Controller:** `src/reports/reports.controller.ts`
+**Service:** `src/reports/reports.service.ts`
+**DTOs:** `src/reports/dto/report-filters.dto.ts`
+
+#### Parâmetros de filtro comuns
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `dateFrom` | ISO 8601 | Início do período. Padrão: 1º dia do mês atual |
+| `dateTo` | ISO 8601 | Fim do período. Padrão: hoje |
+
+Implementado via `ReportFiltersDto`. Quando omitidos, o helper `parsePeriod()` retorna o mês corrente.
+
+---
+
+#### GET /reports/sales
+
+Roles: `owner`, `admin`, `caixa`
+
+Visão consolidada de vendas (pedidos com `paymentStatus=paid`):
+
+- **totals**: receita, subtotal, descontos, taxa de serviço, taxa de entrega, ticket médio, cancelamentos
+- **byType**: breakdown por tipo (delivery / table / counter)
+- **byPaymentMethod**: breakdown por forma de pagamento
+- **byDay**: receita e contagem de pedidos por dia (raw SQL, timezone `America/Sao_Paulo`)
+
+---
+
+#### GET /reports/sales/products
+
+Roles: `owner`, `admin`, `caixa`
+
+Top produtos por quantidade vendida. Parâmetro adicional `limit` (padrão 20, máx 100).
+
+Implementado via raw SQL com JOIN `order_items → products → orders`.
+
+---
+
+#### GET /reports/stock/consumption (RF80)
+
+Roles: `owner`, `admin`
+
+Consumo de estoque por ingrediente no período. Agrega movimentos `withdrawal`, `loss`, `auto_debit`.
+
+- **totalWithdrawn**: retiradas para uso na cozinha
+- **totalLoss**: perdas (vencimento, quebra)
+- **totalAutoDebit**: baixas automáticas por pedido
+- **totalConsumed**: soma dos três
+- **estimatedCost**: custo estimado (`totalConsumed × costPerUnit`), se disponível
+
+Filtro opcional por categoria via `?category=`. Usa `Prisma.sql` + `Prisma.empty` para cláusula condicional no raw SQL. Somente ingredientes com consumo > 0 são retornados (`HAVING` clause).
+
+---
+
+#### GET /reports/stock/consolidation (RF81)
+
+Roles: `owner`, `admin`
+
+Retorna dois lados independentes:
+- **productsSold**: produtos vendidos com quantidade e receita (via `order_items`)
+- **stockConsumed**: insumos consumidos (via `stock_movements`)
+
+> A correlação produto→insumo requer ficha técnica (`product_recipes`), não implementada. A consolidação automática será possível após essa implementação.
+
+---
+
+#### GET /reports/coupons (RF94)
+
+Roles: `owner`, `admin`
+
+Impacto dos cupons no faturamento do período:
+
+- **summary**: total de usos, desconto total, receita com/sem cupom
+- **byCoupon**: ranking de cupons com usos, desconto total e receita por cupom
+
+Implementado via raw SQL com `LEFT JOIN coupon_usages`.
+
+---
+
+#### GET /reports/cash
+
+Roles: `owner`, `admin`, `caixa`
+
+Histórico consolidado de sessões de caixa do período:
+
+- **sessions**: cada sessão com opener/closer, totais por método, diferença de conciliação e contagem de sangrias
+- **totals**: soma de todas as sessões fechadas (cash, credit, debit, pix, voucher, sangrias, diferença acumulada, receita bruta)
+- **sessionCount / closedCount / openCount**: contadores de sessões
+
+---
+
 #### PATCH /users/:id
 
 ```json
@@ -1405,7 +1505,7 @@ As fases seguintes vão implementar:
 | ~~**7**~~ | ~~EstoqueModule~~ ✅ Implementado _(RF76 baixa automática + RF80/RF81 relatórios → adiados para Fase 10 / ficha técnica futura)_ |
 | ~~**8**~~ | ~~CaixaModule~~ ✅ Implementado |
 | ~~**9**~~ | ~~ChatModule~~ ✅ Implementado |
-| **10** | ReportsModule — relatórios, dashboard |
+| ~~**10**~~ | ~~ReportsModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
 - Todas as 28 tabelas além de `users` e `audit_logs`
