@@ -673,6 +673,41 @@ export class OrdersService {
         },
       });
 
+      // RF76 — Baixa automática de estoque ao aceitar pedido
+      if (dto.status === OrderStatus.accepted) {
+        const items = await tx.orderItem.findMany({
+          where: { orderId: id },
+          select: { productId: true, quantity: true },
+        });
+
+        for (const item of items) {
+          if (!item.productId) continue;
+
+          const recipes = await tx.productRecipe.findMany({
+            where: { productId: item.productId },
+          });
+
+          for (const recipe of recipes) {
+            const consumed = recipe.quantity.mul(item.quantity);
+
+            await tx.stockMovement.create({
+              data: {
+                stockItemId: recipe.stockItemId,
+                type: 'auto_debit',
+                quantity: consumed,
+                reason: `Baixa automática — pedido #${order.orderNumber ?? id}`,
+                orderId: id,
+              },
+            });
+
+            await tx.stockItem.update({
+              where: { id: recipe.stockItemId },
+              data: { quantity: { decrement: consumed } },
+            });
+          }
+        }
+      }
+
       // RF52 — selos de fidelidade ao finalizar
       if (dto.status === OrderStatus.done && order.customerId) {
         await tx.customer.update({

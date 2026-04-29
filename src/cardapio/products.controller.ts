@@ -34,6 +34,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { CreateProductSizeDto } from './dto/create-product-size.dto';
 import { UpdateProductSizeDto } from './dto/update-product-size.dto';
+import { UpsertRecipeItemDto } from './dto/product-recipe.dto';
 
 @ApiTags('Cardápio — Produtos')
 @ApiBearerAuth('access-token')
@@ -236,5 +237,58 @@ export class ProductsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.cardapioService.removeSize(pizzeriaId, id, sizeId, user);
+  }
+
+  // ── Recipe (ficha técnica) ─────────────────────────────────────────────────
+
+  @Get(':id/recipe')
+  @Roles(UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Ficha técnica do produto (RF76/RF81)',
+    description: 'Retorna todos os insumos vinculados a este produto com a quantidade consumida por unidade. Usado para baixa automática de estoque ao confirmar pedido (RF76).',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do produto' })
+  @ApiResponse({ status: 200, description: 'Lista de ingredientes da receita' })
+  @ApiResponse({ status: 404, description: 'Produto não encontrado' })
+  getRecipe(@Param('id') id: string, @CurrentPizzeria() pizzeriaId: string) {
+    return this.cardapioService.getRecipe(pizzeriaId, id);
+  }
+
+  @Post(':id/recipe')
+  @Roles(UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Adicionar/atualizar ingrediente na ficha técnica',
+    description: 'Vincula um insumo de estoque ao produto com a quantidade consumida por unidade. Se o insumo já existir na receita, atualiza a quantidade (upsert).',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do produto' })
+  @ApiResponse({ status: 201, description: 'Ingrediente adicionado/atualizado na receita' })
+  @ApiResponse({ status: 404, description: 'Produto ou insumo não encontrado nesta pizzaria' })
+  upsertRecipeItem(
+    @Param('id') id: string,
+    @Body() dto: UpsertRecipeItemDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.cardapioService.upsertRecipeItem(pizzeriaId, id, dto, user);
+  }
+
+  @Delete(':id/recipe/:stockItemId')
+  @Roles(UserRole.owner, UserRole.admin)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Remover ingrediente da ficha técnica',
+    description: 'Remove o vínculo entre o produto e o insumo de estoque.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do produto' })
+  @ApiParam({ name: 'stockItemId', description: 'UUID do insumo de estoque' })
+  @ApiResponse({ status: 200, description: 'Ingrediente removido da receita' })
+  @ApiResponse({ status: 404, description: 'Ingrediente não encontrado na receita' })
+  removeRecipeItem(
+    @Param('id') id: string,
+    @Param('stockItemId') stockItemId: string,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.cardapioService.removeRecipeItem(pizzeriaId, id, stockItemId, user);
   }
 }

@@ -1,5 +1,6 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { createPublicKey } from 'crypto';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import * as jwt from 'jsonwebtoken';
 
 interface JwtPayload {
@@ -67,5 +68,33 @@ export class SupabaseJwtService implements OnModuleInit {
         else resolve(decoded as JwtPayload);
       });
     });
+  }
+
+  // ── Refresh Session ────────────────────────────────────────────────────────
+
+  private _supabaseClient: SupabaseClient | null = null;
+
+  private get supabaseClient(): SupabaseClient {
+    if (!this._supabaseClient) {
+      const url = process.env.SUPABASE_URL;
+      const key = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) throw new Error('SUPABASE_URL e SUPABASE_ANON_KEY são obrigatórios');
+      this._supabaseClient = createClient(url, key, { auth: { persistSession: false } });
+    }
+    return this._supabaseClient;
+  }
+
+  async refreshSession(refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresAt: number }> {
+    const { data, error } = await this.supabaseClient.auth.refreshSession({ refresh_token: refreshToken });
+
+    if (error || !data.session) {
+      throw new UnauthorizedException('Refresh token inválido ou expirado');
+    }
+
+    return {
+      accessToken:  data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt:    data.session.expires_at ?? 0,
+    };
   }
 }

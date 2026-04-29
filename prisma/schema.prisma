@@ -253,8 +253,26 @@ model Product {
   sizes      ProductSize[]
   orderItems OrderItem[]
   comboItems ComboItem[]
+  recipes    ProductRecipe[]
 
   @@map("products")
+}
+
+/// Ficha técnica: vínculo produto → insumo com quantidade necessária por unidade
+model ProductRecipe {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  stockItemId String   @map("stock_item_id")
+  /// Quantidade do insumo consumida por unidade do produto
+  quantity    Decimal  @db.Decimal(10, 3)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockItem StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@unique([productId, stockItemId])
+  @@map("product_recipes")
 }
 
 /// Tamanhos e preços de cada produto
@@ -600,6 +618,7 @@ model StockItem {
   pizzeria  Pizzeria        @relation(fields: [pizzeriaId], references: [id])
   supplier  Supplier?       @relation(fields: [supplierId], references: [id])
   movements StockMovement[]
+  recipes   ProductRecipe[]
 
   @@map("stock_items")
 }
