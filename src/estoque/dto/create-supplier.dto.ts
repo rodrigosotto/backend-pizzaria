@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsEmail,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
@@ -43,6 +44,14 @@ export class CreateSupplierDto {
   @IsEmail()
   @MaxLength(150)
   email?: string;
+
+  @ApiPropertyOptional({
+    example: { street: 'Av. Paulista', number: '1000', neighborhood: 'Bela Vista', city: 'São Paulo', zip_code: '01310-100' },
+    description: 'Endereço estruturado do fornecedor',
+  })
+  @IsOptional()
+  @IsObject()
+  address?: Record<string, string>;
 
   @ApiPropertyOptional({
     example: ['frios', 'frutas'],

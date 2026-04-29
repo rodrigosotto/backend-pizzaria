@@ -66,6 +66,7 @@ export class EstoqueService {
         contactName: dto.contactName,
         phone: dto.phone,
         email: dto.email,
+        address: dto.address ?? undefined,
         categories: dto.categories ?? [],
       },
     });
@@ -92,6 +93,7 @@ export class EstoqueService {
         contactName: dto.contactName,
         phone: dto.phone,
         email: dto.email,
+        address: dto.address,
         categories: dto.categories,
         isActive: dto.isActive,
       },
@@ -129,6 +131,50 @@ export class EstoqueService {
     });
 
     return { deleted: true };
+  }
+
+  async getSupplierPurchases(
+    pizzeriaId: string,
+    supplierId: string,
+    filters: { page?: number; limit?: number },
+  ) {
+    const supplier = await this.prisma.db.supplier.findFirst({
+      where: { id: supplierId, pizzeriaId },
+      select: { id: true, companyName: true, tradeName: true },
+    });
+    if (!supplier) throw new NotFoundException('Fornecedor não encontrado');
+
+    const page = filters.page ?? 1;
+    const limit = Math.min(filters.limit ?? 30, 100);
+    const skip = (page - 1) * limit;
+
+    // Movimentos de entrada dos insumos vinculados a este fornecedor
+    const where = {
+      type: 'entry',
+      stockItem: { supplierId, pizzeriaId },
+    };
+
+    const [movements, total] = await this.prisma.db.$transaction([
+      this.prisma.db.stockMovement.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          stockItem: { select: { id: true, name: true, unit: true } },
+        },
+      }),
+      this.prisma.db.stockMovement.count({ where }),
+    ]);
+
+    return {
+      supplier,
+      movements,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
   }
 
   // =========================================================================

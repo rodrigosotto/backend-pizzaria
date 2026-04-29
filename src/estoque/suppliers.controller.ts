@@ -119,4 +119,27 @@ export class SuppliersController {
   ) {
     return this.estoqueService.removeSupplier(pizzeriaId, id, user.sub);
   }
+
+  @Get(':id/purchases')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @ApiOperation({
+    summary: 'Histórico de compras do fornecedor (RF84)',
+    description: 'Lista todos os movimentos de entrada (`entry`) dos insumos vinculados a este fornecedor, em ordem cronológica decrescente. Representa o histórico de compras realizadas com ele.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do fornecedor' })
+  @ApiQuery({ name: 'page', required: false, description: 'Padrão: 1' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Padrão: 30, máx: 100' })
+  @ApiResponse({ status: 200, description: 'Histórico paginado de entradas de estoque com dados do insumo' })
+  @ApiResponse({ status: 404, description: 'Fornecedor não encontrado' })
+  getPurchases(
+    @Param('id') id: string,
+    @CurrentPizzeria() pizzeriaId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.estoqueService.getSupplierPurchases(pizzeriaId, id, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
 }

@@ -1208,9 +1208,10 @@ Header: Authorization: Bearer eyJhbGci...
 |---|---|---|---|
 | `GET` | `/api/v1/suppliers` | owner/admin/atendente | Listar fornecedores. `?active=true/false` para filtrar por status |
 | `GET` | `/api/v1/suppliers/:id` | owner/admin/atendente | Detalhes do fornecedor com lista de insumos vinculados |
-| `POST` | `/api/v1/suppliers` | owner/admin | Cadastrar fornecedor (RF82) |
-| `PATCH` | `/api/v1/suppliers/:id` | owner/admin | Atualizar fornecedor, incluindo ativação/desativação (RF83) |
-| `DELETE` | `/api/v1/suppliers/:id` | owner/admin | Remover fornecedor — bloqueado se tiver insumos vinculados (RF84) |
+| `GET` | `/api/v1/suppliers/:id/purchases` | owner/admin/atendente | Histórico de compras do fornecedor (RF84) — movimentos `entry` dos insumos vinculados, paginado. `?page=&limit=` |
+| `POST` | `/api/v1/suppliers` | owner/admin | Cadastrar fornecedor (RF82) — campos: `companyName`, `tradeName?`, `cnpj?`, `contactName?`, `phone`, `email?`, `address?` (JSONB), `categories?` |
+| `PATCH` | `/api/v1/suppliers/:id` | owner/admin | Atualizar fornecedor. Use `isActive: false` para desativar (RF83) |
+| `DELETE` | `/api/v1/suppliers/:id` | owner/admin | Remover fornecedor — bloqueado se tiver insumos vinculados |
 
 ---
 
@@ -1238,6 +1239,40 @@ Header: Authorization: Bearer eyJhbGci...
 | `loss` | −qty do estoque | Perda por vencimento/quebra. Bloqueado se qty > estoque atual |
 | `adjustment` | seta estoque para qty informado | Inventário. `quantity` é o valor absoluto alvo |
 | `auto_debit` | −qty do estoque | Gerado internamente por integração com pedidos (futuro) |
+
+---
+
+### Caixa
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+>
+> **RN03:** abertura, fechamento e sangrias são restritos a roles `owner`, `admin` e `caixa`.
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/cash/dashboard` | owner/admin/caixa | Dashboard financeiro: receita hoje/15d/30d, breakdown por pagamento, vendas por hora, taxa de serviço (RF64/RF65/RF70/RF71) |
+| `POST` | `/api/v1/cash/sessions` | owner/admin/caixa | Abrir caixa com `initialAmount` (fundo de troco) — bloqueado se já houver sessão aberta (RF63) |
+| `GET` | `/api/v1/cash/sessions/current` | owner/admin/caixa/atendente | Sessão de caixa aberta no momento com sangrias |
+| `GET` | `/api/v1/cash/sessions` | owner/admin/caixa | Histórico de sessões. `?onlyOpen=true&page=&limit=` |
+| `GET` | `/api/v1/cash/sessions/:id` | owner/admin/caixa | Detalhes de uma sessão com quem abriu/fechou e sangrias |
+| `POST` | `/api/v1/cash/sessions/:id/close` | owner/admin/caixa | Fechar caixa: recebe `actualBalance`, calcula totais por método, saldo esperado e diferença (RF67/RF69) |
+| `POST` | `/api/v1/cash/sessions/:id/withdrawals` | owner/admin/caixa | Registrar sangria com `amount` e `reason` — incrementa `totalWithdrawals` (RF66) |
+| `GET` | `/api/v1/cash/sessions/:id/withdrawals` | owner/admin/caixa | Listar sangrias da sessão |
+
+**Relatório de fechamento (resposta de `POST /cash/sessions/:id/close`):**
+
+| Campo | Descrição |
+|---|---|
+| `totalCash` | Soma de pedidos pagos em dinheiro desde a abertura |
+| `totalCredit` | Soma de pedidos pagos em crédito |
+| `totalDebit` | Soma de pedidos pagos em débito |
+| `totalPix` | Soma de pedidos pagos em PIX |
+| `totalVoucher` | Soma de pedidos pagos em voucher |
+| `totalWithdrawals` | Soma de todas as sangrias da sessão |
+| `expectedBalance` | `initialAmount + totalCash − totalWithdrawals` |
+| `actualBalance` | Valor físico informado pelo operador |
+| `difference` | `actualBalance − expectedBalance` (negativo = falta, positivo = sobra) |
+| `totalServiceFee` | Soma das taxas de serviço dos pedidos do período (RF71) |
 
 ---
 
@@ -1319,8 +1354,8 @@ As fases seguintes vão implementar:
 | ~~**4**~~ | ~~CardápioModule~~ ✅ Implementado |
 | ~~**5**~~ | ~~CustomersModule~~ ✅ Implementado |
 | ~~**6**~~ | ~~OrdersModule~~ ✅ Implementado |
-| ~~**7**~~ | ~~EstoqueModule~~ ✅ Implementado |
-| **8** | CaixaModule — abertura/fechamento de caixa, retiradas |
+| ~~**7**~~ | ~~EstoqueModule~~ ✅ Implementado _(RF76 baixa automática + RF80/RF81 relatórios → adiados para Fase 10 / ficha técnica futura)_ |
+| ~~**8**~~ | ~~CaixaModule~~ ✅ Implementado |
 | **9** | ChatModule — conversas com clientes, templates |
 | **10** | ReportsModule — relatórios, dashboard |
 
