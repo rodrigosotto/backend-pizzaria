@@ -221,29 +221,33 @@ O KDS substitui comandas impressas e exibe em tempo real o que deve ser preparad
 
 O chat interno simula a experiência do WhatsApp, com conversas organizadas por cliente, sem depender de API paga do WhatsApp Business.
 
-| ID | Módulo | Descrição | Prioridade |
-|---|---|---|---|
-| RF56 | Chat | Interface de chat estilo WhatsApp com lista de conversas por cliente. | Alta |
-| RF57 | Chat | Mensagens automáticas configuráveis: confirmação de pedido, saída para entrega, entrega realizada. | Alta |
-| RF58 | Chat | Notificações push no app do atendente para novas mensagens. | Média |
-| RF59 | Chat | Envio de cardápio digital (link) pelo chat. | Média |
-| RF60 | Chat | Histórico completo de conversas por cliente. | Alta |
-| RF61 | Chat | Suporte a texto e emojis. Imagens como opcional (fase 2). | Média |
-| RF62 | Chat | Templates de mensagem rápida (respostas predefinidas com um clique). | Média |
+> **Fase 9 — ChatModule ✅ Implementado** (`src/chat/`)
+
+| ID | Módulo | Descrição | Prioridade | Backend |
+|---|---|---|---|---|
+| RF56 | Chat | Interface de chat estilo WhatsApp com lista de conversas por cliente. | Alta | ✅ `GET /chat/conversations` — ordenado por última mensagem, com preview e `unreadCount` |
+| RF57 | Chat | Mensagens automáticas configuráveis: confirmação de pedido, saída para entrega, entrega realizada. | Alta | ✅ `senderType: "system"` + `isAutomatic: true`; `ChatService.sendAutoMessage()` exportado para integração com OrdersModule |
+| RF58 | Chat | Notificações push no app do atendente para novas mensagens. | Média | ⏳ Adiado — pertence ao NotificationsModule (fase futura) |
+| RF59 | Chat | Envio de cardápio digital (link) pelo chat. | Média | ✅ Via campo `content` em `POST /chat/conversations/:id/messages` |
+| RF60 | Chat | Histórico completo de conversas por cliente. | Alta | ✅ `GET /chat/conversations/:id/messages` — paginado, até 200 por página |
+| RF61 | Chat | Suporte a texto e emojis. Imagens como opcional (fase 2). | Média | ✅ Campo `content` com MaxLength 2000, compatível com Unicode/emojis |
+| RF62 | Chat | Templates de mensagem rápida (respostas predefinidas com um clique). | Média | ✅ CRUD em `/chat/templates` + `POST /chat/conversations/:id/messages/template` |
 
 ### 2.9 Módulo de Caixa
 
-| ID | Módulo | Descrição | Prioridade |
-|---|---|---|---|
-| RF63 | Caixa | Abertura de caixa com registro de valor inicial (fundo de troco). | Alta |
-| RF64 | Caixa | Dashboard do caixa com total vendido em: Hoje │ 15 dias │ 30 dias. | Alta |
-| RF65 | Caixa | Breakdown por forma de pagamento: Dinheiro, Crédito, Débito, PIX, Voucher. | Alta |
-| RF66 | Caixa | Registro de sangrias (retirada de dinheiro) com motivo e responsável. | Alta |
-| RF67 | Caixa | Fechamento de caixa com relatório consolidado: entradas, saídas, saldo final. | Alta |
-| RF68 | Caixa | Impressão do relatório de fechamento de caixa. | Média |
-| RF69 | Caixa | Conciliação de pagamentos: comparativo entre total em sistema e valor físico informado. | Alta |
-| RF70 | Caixa | Gráfico de vendas por hora do dia (identificar pico de demanda). | Média |
-| RF71 | Caixa | Taxa de serviço: cálculo automático e destaque no relatório. | Média |
+> **Fase 8 — CaixaModule ✅ Implementado** (`src/caixa/`)
+
+| ID | Módulo | Descrição | Prioridade | Backend |
+|---|---|---|---|---|
+| RF63 | Caixa | Abertura de caixa com registro de valor inicial (fundo de troco). | Alta | ✅ `POST /cash/sessions` — bloqueia se já houver sessão aberta |
+| RF64 | Caixa | Dashboard do caixa com total vendido em: Hoje │ 15 dias │ 30 dias. | Alta | ✅ `GET /cash/dashboard` → `revenue.today / last15d / last30d` |
+| RF65 | Caixa | Breakdown por forma de pagamento: Dinheiro, Crédito, Débito, PIX, Voucher. | Alta | ✅ `paymentBreakdown` no dashboard — últimos 30 dias |
+| RF66 | Caixa | Registro de sangrias (retirada de dinheiro) com motivo e responsável. | Alta | ✅ `POST /cash/sessions/:id/withdrawals` — incrementa `totalWithdrawals` atomicamente |
+| RF67 | Caixa | Fechamento de caixa com relatório consolidado: entradas, saídas, saldo final. | Alta | ✅ `POST /cash/sessions/:id/close` — calcula totais por método, `expectedBalance` e `difference` |
+| RF68 | Caixa | Impressão do relatório de fechamento de caixa. | Média | ✅ Dados completos na resposta do fechamento — impressão é responsabilidade do frontend |
+| RF69 | Caixa | Conciliação de pagamentos: comparativo entre total em sistema e valor físico informado. | Alta | ✅ `actualBalance` (input) vs `expectedBalance` (calculado) → `difference` persistida |
+| RF70 | Caixa | Gráfico de vendas por hora do dia (identificar pico de demanda). | Média | ✅ `salesByHour` no dashboard via raw SQL com `EXTRACT(HOUR ... AT TIME ZONE 'America/Sao_Paulo')` |
+| RF71 | Caixa | Taxa de serviço: cálculo automático e destaque no relatório. | Média | ✅ `serviceFeesToday` no dashboard; `totalServiceFee` na resposta do fechamento |
 
 ### 2.10 Controle de Estoque
 
