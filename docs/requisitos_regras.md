@@ -253,18 +253,20 @@ O chat interno simula a experiência do WhatsApp, com conversas organizadas por 
 
 Sugestão de expansão: o módulo de estoque controla insumos da pizzaria categorizados por tipo, com alertas de reposição e vínculo com fornecedores.
 
-| ID | Módulo | Descrição | Prioridade |
-|---|---|---|---|
-| RF72 | Estoque | Cadastro de produtos de estoque por categoria: Frios, Frutas, Óleos, Verduras, Legumes, Fritos (peixe, calabresa, batata). | Alta |
-| RF73 | Estoque | Controle de quantidade em estoque com unidade de medida (kg, unidade, litro, pacote). | Alta |
-| RF74 | Estoque | Alerta automático de estoque mínimo configurável por produto. | Alta |
-| RF75 | Estoque | Registro de entrada de estoque (nota fiscal) com vínculo ao fornecedor. | Alta |
-| RF76 | Estoque | Baixa automática de estoque ao confirmar pedido (vinculada à receita do produto). | Média |
-| RF77 | Estoque | Baixa manual de estoque (perdas, consumo interno). | Alta |
-| RF78 | Estoque | Inventário periódico: comparativo entre estoque teórico e real contado. | Média |
-| RF79 | Estoque | Histórico de movimentações (entradas, saídas, perdas) com rastreabilidade. | Alta |
-| RF80 | Estoque | Relatório de consumo por período por ingrediente. | Média |
-| RF81 | Estoque | Consolidação de produtos: relatório de insumos necessários baseado nos pedidos do período. | Alta |
+> **Fase 10 — ReportsModule ✅ Implementado** (`src/reports/`)
+
+| ID | Módulo | Descrição | Prioridade | Backend |
+|---|---|---|---|---|
+| RF72 | Estoque | Cadastro de produtos de estoque por categoria: Frios, Frutas, Óleos, Verduras, Legumes, Fritos (peixe, calabresa, batata). | Alta | ✅ `POST /stock/items` |
+| RF73 | Estoque | Controle de quantidade em estoque com unidade de medida (kg, unidade, litro, pacote). | Alta | ✅ campo `unit` em `StockItem` |
+| RF74 | Estoque | Alerta automático de estoque mínimo configurável por produto. | Alta | ✅ `isAlert` calculado; `?alertOnly=true` em `GET /stock/items` |
+| RF75 | Estoque | Registro de entrada de estoque (nota fiscal) com vínculo ao fornecedor. | Alta | ✅ `POST /stock/items/:id/movements` com `type=entry` |
+| RF76 | Estoque | Baixa automática de estoque ao confirmar pedido (vinculada à receita do produto). | Média | ⏳ Requer `product_recipes` (ficha técnica — não implementada) |
+| RF77 | Estoque | Baixa manual de estoque (perdas, consumo interno). | Alta | ✅ `POST /stock/items/:id/movements` com `type=withdrawal` ou `loss` |
+| RF78 | Estoque | Inventário periódico: comparativo entre estoque teórico e real contado. | Média | ✅ `POST /stock/items/:id/movements` com `type=adjustment` |
+| RF79 | Estoque | Histórico de movimentações (entradas, saídas, perdas) com rastreabilidade. | Alta | ✅ `GET /stock/items/:id/movements` |
+| RF80 | Estoque | Relatório de consumo por período por ingrediente. | Média | ✅ `GET /reports/stock/consumption` — agrega `withdrawal`, `loss`, `auto_debit`; filtro por categoria |
+| RF81 | Estoque | Consolidação de produtos: relatório de insumos necessários baseado nos pedidos do período. | Alta | ✅ `GET /reports/stock/consolidation` — retorna `productsSold` + `stockConsumed` (vínculo completo pendente de `product_recipes`) |
 
 ### 2.11 Cadastro de Fornecedores
 
@@ -284,10 +286,10 @@ Sugestão de expansão: o módulo de estoque controla insumos da pizzaria catego
 | RF88 | Fidelidade | Validade configurável dos selos acumulados (ex: 90 dias). | Alta |
 | RF89 | Fidelidade | Exibição no checkout de quantos selos faltam para o prêmio. | Alta |
 | RF90 | Fidelidade | Múltiplos programas de fidelidade com recompensas diferentes. | Baixa |
-| RF91 | Cupons | Criação de cupons de desconto: porcentagem (%) ou valor fixo (R$). | Alta |
-| RF92 | Cupons | Valor mínimo de pedido para aplicação do cupom. | Alta |
-| RF93 | Cupons | Limite de uso por CPF e/ou data de expiração. | Alta |
-| RF94 | Cupons | Relatório de cupons utilizados com impacto no faturamento. | Média |
+| RF91 | Cupons | Criação de cupons de desconto: porcentagem (%) ou valor fixo (R$). | Alta | ✅ `POST /coupons` |
+| RF92 | Cupons | Valor mínimo de pedido para aplicação do cupom. | Alta | ✅ campo `minOrderValue` validado na aplicação |
+| RF93 | Cupons | Limite de uso por CPF e/ou data de expiração. | Alta | ✅ `maxUses`, `expiresAt`, validações no OrdersService |
+| RF94 | Cupons | Relatório de cupons utilizados com impacto no faturamento. | Média | ✅ `GET /reports/coupons` — summary + ranking por cupom |
 
 ### 2.13 Configurações do Estabelecimento
 

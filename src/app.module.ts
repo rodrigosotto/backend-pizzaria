@@ -16,6 +16,7 @@ import { OrdersModule } from './orders/orders.module';
 import { EstoqueModule } from './estoque/estoque.module';
 import { CaixaModule } from './caixa/caixa.module';
 import { ChatModule } from './chat/chat.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ChatModule } from './chat/chat.module';
     EstoqueModule,
     CaixaModule,
     ChatModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
