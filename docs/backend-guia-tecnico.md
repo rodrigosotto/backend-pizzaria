@@ -1276,6 +1276,54 @@ Header: Authorization: Bearer eyJhbGci...
 
 ---
 
+### Chat — Conversas
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/chat/conversations` | owner/admin/atendente | Lista conversas ordenadas pela última mensagem (RF56). `?unreadOnly=true` filtra não lidas. Inclui preview da última mensagem |
+| `POST` | `/api/v1/chat/conversations` | owner/admin/atendente | Iniciar ou retomar conversa com cliente (RF56). Idempotente: retorna a existente se já houver |
+| `GET` | `/api/v1/chat/conversations/:id` | owner/admin/atendente | Detalhes da conversa com últimas 50 mensagens em ordem cronológica (RF60) |
+| `PATCH` | `/api/v1/chat/conversations/:id/read` | owner/admin/atendente | Marcar conversa como lida — zera `unreadCount` |
+| `POST` | `/api/v1/chat/conversations/:id/messages` | owner/admin/atendente | Enviar mensagem — texto + emojis (RF61). Suporta `senderType`: `attendant` / `customer` / `system` (RF57). RF59: envie link do cardápio no `content` |
+| `POST` | `/api/v1/chat/conversations/:id/messages/template` | owner/admin/atendente | Enviar mensagem usando template (RF62) — `{ templateId }` |
+| `GET` | `/api/v1/chat/conversations/:id/messages` | owner/admin/atendente | Histórico completo paginado (RF60). `?page=&limit=` (máx 200) |
+
+**Lógica de `unreadCount`:**
+
+| senderType | Efeito no unreadCount |
+|---|---|
+| `attendant` | Zera (staff está ativo na conversa) |
+| `system` | Não altera (mensagem de saída automática) |
+| `customer` | +1 (nova mensagem não lida pela equipe) |
+
+---
+
+### Chat — Templates
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/chat/templates` | owner/admin/atendente | Listar templates ativos (RF62). `?activeOnly=false` inclui desativados |
+| `POST` | `/api/v1/chat/templates` | owner/admin | Criar template com `title` e `content`. Suporta variáveis `{{ }}` no conteúdo (RF57/RF62) |
+| `PATCH` | `/api/v1/chat/templates/:id` | owner/admin | Atualizar template ou desativar com `isActive: false` |
+| `DELETE` | `/api/v1/chat/templates/:id` | owner/admin | Remover template permanentemente |
+
+**Templates sugeridos para RF57 (mensagens automáticas de pedido):**
+
+| Template | Conteúdo sugerido |
+|---|---|
+| Pedido confirmado | `Olá {{nome}}! Seu pedido foi confirmado. Tempo estimado: {{tempo}} min 🍕` |
+| Saiu para entrega | `Seu pedido saiu para entrega com {{entregador}}! Em breve chegará. 🛵` |
+| Pedido entregue | `Pedido entregue! Obrigado pela preferência. Avalie seu pedido 🌟` |
+| Cardápio digital | `Veja nosso cardápio completo aqui: {{link}} 📲` |
+
+> **Integração RF57 com OrdersModule:** o `ChatService` expõe o método `sendAutoMessage(pizzeriaId, customerId, content)` — exportado pelo `ChatModule` — para que outros módulos possam disparar mensagens automáticas ao mudar status de pedido.
+
+---
+
 #### PATCH /users/:id
 
 ```json
@@ -1356,7 +1404,7 @@ As fases seguintes vão implementar:
 | ~~**6**~~ | ~~OrdersModule~~ ✅ Implementado |
 | ~~**7**~~ | ~~EstoqueModule~~ ✅ Implementado _(RF76 baixa automática + RF80/RF81 relatórios → adiados para Fase 10 / ficha técnica futura)_ |
 | ~~**8**~~ | ~~CaixaModule~~ ✅ Implementado |
-| **9** | ChatModule — conversas com clientes, templates |
+| ~~**9**~~ | ~~ChatModule~~ ✅ Implementado |
 | **10** | ReportsModule — relatórios, dashboard |
 
 **O que está no schema mas sem endpoints ainda:**
