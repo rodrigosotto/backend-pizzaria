@@ -24,6 +24,7 @@ import type { JwtPayload } from './orders.service';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
@@ -41,28 +42,27 @@ import { Roles } from '../modules/auth/decorators/roles.decorator';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
-  // ---------------------------------------------------------------------------
-  // POST /orders — RF03: Criar pedido
-  // ---------------------------------------------------------------------------
-
   @Post()
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({
     summary: 'Criar novo pedido',
-    description: `Registra um novo pedido (RF03). Tipos suportados: delivery, table, counter.
+    description: `Registra um novo pedido (RF03/RF04). Tipos: delivery, table, counter.
+
+**Validações na criação:**
+- \`delivery\`: exige \`deliveryAddressId\` + respeita horário de funcionamento (RN02) + pedido mínimo (RN07)
+- \`table\`: exige \`tableId\`
+- Cliente na blacklist é bloqueado
 
 **Cálculo de preço:**
 - Itens simples: \`ProductSize.price\`
 - Pizzas fracionadas: aplica \`flavorPriceRule\` do produto (RN01)
-  - \`highest\`: cobra o sabor mais caro
-  - \`average\`: cobra a média dos sabores
-  - \`fixed\`: cobra o preço fixo do tamanho
-- Borda recheada: adiciona \`extraPrice\` baseado no tamanho
+- Borda recheada: adiciona \`extraPrice\` baseado no rótulo do tamanho
+- Taxa de serviço: calculada de \`PizzeriaConfig.serviceFeePct\` (RN10)
 
-**Cupom (RN06):** validado no servidor — vigência, valor mínimo, limite total e limite por CPF.`,
+**Cupom (RN06):** validado no servidor — vigência, valor mínimo, limite total e por CPF.`,
   })
-  @ApiResponse({ status: 201, description: 'Pedido criado com sucesso' })
-  @ApiResponse({ status: 400, description: 'Dados inválidos, cliente na lista negra ou cupom inválido' })
+  @ApiResponse({ status: 201, description: 'Pedido criado' })
+  @ApiResponse({ status: 400, description: 'Dados inválidos, pizzaria fechada, pedido mínimo não atingido ou cupom inválido' })
   @ApiResponse({ status: 404, description: 'Produto, tamanho, borda ou cliente não encontrado' })
   create(
     @Body() dto: CreateOrderDto,
@@ -72,23 +72,19 @@ export class OrdersController {
     return this.ordersService.create(pizzeriaId, dto, user.sub);
   }
 
-  // ---------------------------------------------------------------------------
-  // GET /orders — Listar pedidos com filtros
-  // ---------------------------------------------------------------------------
-
   @Get()
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
   @ApiOperation({
     summary: 'Listar pedidos da pizzaria',
     description: 'Retorna pedidos paginados com filtros opcionais por status, tipo e data.',
   })
-  @ApiQuery({ name: 'status', enum: OrderStatus, required: false, description: 'Filtrar por status' })
-  @ApiQuery({ name: 'type', enum: OrderType, required: false, description: 'Filtrar por tipo' })
-  @ApiQuery({ name: 'customerId', required: false, description: 'Filtrar por cliente (UUID)' })
-  @ApiQuery({ name: 'dateFrom', required: false, description: 'Data inicial (ISO 8601, ex: 2025-01-01)' })
-  @ApiQuery({ name: 'dateTo', required: false, description: 'Data final (ISO 8601, ex: 2025-12-31)' })
-  @ApiQuery({ name: 'page', required: false, description: 'Página (padrão: 1)' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Itens por página (padrão: 20, máx: 100)' })
+  @ApiQuery({ name: 'status', enum: OrderStatus, required: false })
+  @ApiQuery({ name: 'type', enum: OrderType, required: false })
+  @ApiQuery({ name: 'customerId', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'ISO 8601, ex: 2025-01-01' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'ISO 8601, ex: 2025-12-31' })
+  @ApiQuery({ name: 'page', required: false, description: 'Padrão: 1' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Padrão: 20, máx: 100' })
   @ApiResponse({ status: 200, description: 'Lista paginada de pedidos' })
   findAll(
     @CurrentPizzeria() pizzeriaId: string,
@@ -111,17 +107,13 @@ export class OrdersController {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // GET /orders/number/:orderNumber — RF05: busca por número do pedido
-  // ---------------------------------------------------------------------------
-
   @Get('number/:orderNumber')
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
   @ApiOperation({
     summary: 'Buscar pedido pelo número',
-    description: 'Busca rápida por número sequencial do pedido (RF05). Útil para lookup em cozinha/balcão.',
+    description: 'Busca rápida por número sequencial do pedido (RF05). Útil em cozinha/balcão.',
   })
-  @ApiParam({ name: 'orderNumber', type: Number, description: 'Número sequencial do pedido (por pizzaria)' })
+  @ApiParam({ name: 'orderNumber', type: Number })
   @ApiResponse({ status: 200, description: 'Pedido encontrado' })
   @ApiResponse({ status: 404, description: 'Pedido não encontrado' })
   findByNumber(
@@ -131,15 +123,11 @@ export class OrdersController {
     return this.ordersService.findByNumber(pizzeriaId, orderNumber);
   }
 
-  // ---------------------------------------------------------------------------
-  // GET /orders/:id — Detalhes do pedido
-  // ---------------------------------------------------------------------------
-
   @Get(':id')
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
   @ApiOperation({
     summary: 'Obter detalhes do pedido',
-    description: 'Retorna pedido completo com itens, sabores, cliente, entregador e cupom aplicado.',
+    description: 'Retorna pedido completo com itens, sabores, cliente, entregador e cupom.',
   })
   @ApiParam({ name: 'id', description: 'UUID do pedido' })
   @ApiResponse({ status: 200, description: 'Detalhes do pedido' })
@@ -151,27 +139,44 @@ export class OrdersController {
     return this.ordersService.findOne(pizzeriaId, id);
   }
 
-  // ---------------------------------------------------------------------------
-  // PATCH /orders/:id/status — RF06, RF07: Avançar status do pedido
-  // ---------------------------------------------------------------------------
+  @Patch(':id/items')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @ApiOperation({
+    summary: 'Editar itens do pedido (RF09)',
+    description: `Substitui todos os itens do pedido por uma nova lista. Só é permitido quando o status é \`accepted\` (antes de ir para preparo).
+
+Os totais são recalculados automaticamente: subtotal, desconto do cupom original, taxa de serviço e total final.`,
+  })
+  @ApiParam({ name: 'id', description: 'UUID do pedido' })
+  @ApiResponse({ status: 200, description: 'Itens atualizados e totais recalculados' })
+  @ApiResponse({ status: 404, description: 'Pedido não encontrado' })
+  @ApiResponse({ status: 422, description: 'Pedido não está no status "accepted"' })
+  updateItems(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderItemsDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ordersService.updateItems(pizzeriaId, id, dto, user.sub);
+  }
 
   @Patch(':id/status')
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha)
   @ApiOperation({
     summary: 'Atualizar status do pedido',
-    description: `Avança o status do pedido (RF06/RF07). Transições válidas:
+    description: `Avança o status (RF06/RF07). Transições válidas:
 - \`new\` → accepted | cancelled
 - \`accepted\` → preparing | cancelled
 - \`preparing\` → ready | cancelled
 - \`ready\` → delivering (só delivery) | done | cancelled
 - \`delivering\` → done | cancelled
 
-Ao marcar como \`done\`, o sistema incrementa automaticamente \`loyaltyStamps\` do cliente (RF52).`,
+\`delivering\` exige entregador atribuído (RN08). Status \`done\` incrementa \`loyaltyStamps\` do cliente (RF52).`,
   })
   @ApiParam({ name: 'id', description: 'UUID do pedido' })
   @ApiResponse({ status: 200, description: 'Status atualizado' })
   @ApiResponse({ status: 404, description: 'Pedido não encontrado' })
-  @ApiResponse({ status: 422, description: 'Transição de status inválida' })
+  @ApiResponse({ status: 422, description: 'Transição inválida' })
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -181,40 +186,35 @@ Ao marcar como \`done\`, o sistema incrementa automaticamente \`loyaltyStamps\` 
     return this.ordersService.updateStatus(pizzeriaId, id, dto, user.sub);
   }
 
-  // ---------------------------------------------------------------------------
-  // PATCH /orders/:id/cancel — RF08: Cancelar pedido
-  // ---------------------------------------------------------------------------
-
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({
-    summary: 'Cancelar pedido',
-    description: 'Cancela o pedido com motivo obrigatório (RF08). Não é possível cancelar pedidos em status terminal (done). Motivo registrado em auditoria.',
+    summary: 'Cancelar pedido (RF08)',
+    description: `Cancela o pedido com motivo obrigatório. Registrado em auditoria.
+
+**RN05:** cancelamento de pedido já pago (\`paymentStatus = paid\`) é restrito a Admin/Owner.`,
   })
   @ApiParam({ name: 'id', description: 'UUID do pedido' })
   @ApiResponse({ status: 200, description: 'Pedido cancelado' })
+  @ApiResponse({ status: 403, description: 'Pagamento já registrado — requer Admin/Owner (RN05)' })
   @ApiResponse({ status: 404, description: 'Pedido não encontrado' })
-  @ApiResponse({ status: 422, description: 'Pedido não pode mais ser cancelado (status terminal)' })
+  @ApiResponse({ status: 422, description: 'Status terminal — não pode ser cancelado' })
   cancel(
     @Param('id') id: string,
     @Body() dto: CancelOrderDto,
     @CurrentPizzeria() pizzeriaId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.ordersService.cancel(pizzeriaId, id, dto, user.sub);
+    return this.ordersService.cancel(pizzeriaId, id, dto, user.sub, user.role as UserRole);
   }
-
-  // ---------------------------------------------------------------------------
-  // PATCH /orders/:id/payment — Registrar pagamento
-  // ---------------------------------------------------------------------------
 
   @Patch(':id/payment')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
   @ApiOperation({
-    summary: 'Registrar pagamento do pedido',
-    description: `Registra a forma de pagamento e marca o pedido como pago. Para pagamento em dinheiro (cash), informe \`amountPaid\` para validar que o valor cobre o total.`,
+    summary: 'Registrar pagamento',
+    description: 'Registra forma de pagamento e marca como pago. Para `cash`, informe `amountPaid` para validar que cobre o total.',
   })
   @ApiParam({ name: 'id', description: 'UUID do pedido' })
   @ApiResponse({ status: 200, description: 'Pagamento registrado' })

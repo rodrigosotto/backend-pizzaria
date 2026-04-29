@@ -13,6 +13,7 @@ import { HubModule } from './hub/hub.module';
 import { CardapioModule } from './cardapio/cardapio.module';
 import { CustomersModule } from './customers/customers.module';
 import { OrdersModule } from './orders/orders.module';
+import { EstoqueModule } from './estoque/estoque.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { OrdersModule } from './orders/orders.module';
     CardapioModule,
     CustomersModule,
     OrdersModule,
+    EstoqueModule,
   ],
   controllers: [AppController],
   providers: [AppService],
