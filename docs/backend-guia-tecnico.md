@@ -818,13 +818,48 @@ Timestamps são preenchidos automaticamente a cada transição:
 
 ---
 
-### 10.6 Cancelamento (RF08)
+### 10.6 Cancelamento (RF08 + RN05)
 
-`PATCH /orders/:id/cancel` exige `reason` (mínimo 3 caracteres). O motivo é gravado em `cancelReason` e registrado em auditoria. Pedidos nos status `done` ou `cancelled` não podem ser cancelados.
+`PATCH /orders/:id/cancel` exige `reason` (mínimo 3 caracteres). O motivo é gravado em `cancelReason` e registrado em auditoria com o `paymentStatus` anterior. Pedidos nos status `done` ou `cancelled` não podem ser cancelados.
+
+**RN05 — Cancelamento pós-pagamento:** se `paymentStatus === 'paid'`, apenas roles `owner` ou `admin` podem cancelar. Um atendente tentando cancelar um pedido já pago recebe `403 Forbidden`.
 
 ---
 
-### 10.7 Número do pedido
+### 10.7 Horário de funcionamento — delivery (RN02)
+
+Ao criar um pedido `delivery`, o sistema consulta `PizzeriaConfig.businessHours` e verifica se o horário atual está dentro da janela configurada para o dia da semana.
+
+**Formato do JSON `businessHours`:**
+```json
+{
+  "0": { "open": false },
+  "1": { "open": true, "from": "18:00", "to": "23:30" },
+  "5": { "open": true, "from": "18:00", "to": "00:30" },
+  "6": { "open": true, "from": "12:00", "to": "00:30" }
+}
+```
+Chaves `"0"`–`"6"` seguem `Date.getDay()` (0 = domingo). Janelas que cruzam meia-noite são suportadas. Se um dia não estiver configurado ou `businessHours` estiver vazio, o pedido é **permitido** (fail open).
+
+Pedidos `table` e `counter` não são afetados por este bloqueio.
+
+---
+
+### 10.8 Edição de itens do pedido (RF09)
+
+`PATCH /orders/:id/items` substitui todos os itens de um pedido. Só é permitido quando `status = accepted` (antes do preparo iniciar).
+
+**O que acontece na edição:**
+1. Todos os itens anteriores são removidos (`deleteMany`)
+2. Os novos itens são criados com os mesmos cálculos de preço de `create()`
+3. Subtotal, desconto do cupom original, taxa de serviço e total são recalculados
+4. Tudo ocorre em uma única `$transaction`
+
+O método privado `resolveItems()` é compartilhado entre `create()` e `updateItems()` para garantir consistência no cálculo.
+
+---
+
+### 10.9 Número do pedido
 
 `orderNumber` é sequencial por pizzaria — começa em 1 e incrementa em cada pedido. Útil para exibição em KDS/cozinha e busca rápida via `GET /orders/number/:orderNumber`.
 
@@ -1159,8 +1194,85 @@ Header: Authorization: Bearer eyJhbGci...
 | `GET` | `/api/v1/orders/number/:orderNumber` | owner/admin/atendente/cozinha/caixa | Busca rápida por número do pedido (RF05) |
 | `GET` | `/api/v1/orders/:id` | owner/admin/atendente/cozinha/caixa | Detalhes completos com itens, sabores, cliente e cupom |
 | `PATCH` | `/api/v1/orders/:id/status` | owner/admin/atendente/cozinha | Avançar status do pedido (RF06/RF07) |
-| `PATCH` | `/api/v1/orders/:id/cancel` | owner/admin/atendente | Cancelar com motivo obrigatório (RF08) |
+| `PATCH` | `/api/v1/orders/:id/items` | owner/admin/atendente | Substituir itens do pedido — só status `accepted` (RF09) |
+| `PATCH` | `/api/v1/orders/:id/cancel` | owner/admin/atendente | Cancelar com motivo obrigatório (RF08 + RN05) |
 | `PATCH` | `/api/v1/orders/:id/payment` | owner/admin/atendente/caixa | Registrar forma de pagamento |
+
+---
+
+### Estoque — Fornecedores
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/suppliers` | owner/admin/atendente | Listar fornecedores. `?active=true/false` para filtrar por status |
+| `GET` | `/api/v1/suppliers/:id` | owner/admin/atendente | Detalhes do fornecedor com lista de insumos vinculados |
+| `GET` | `/api/v1/suppliers/:id/purchases` | owner/admin/atendente | Histórico de compras do fornecedor (RF84) — movimentos `entry` dos insumos vinculados, paginado. `?page=&limit=` |
+| `POST` | `/api/v1/suppliers` | owner/admin | Cadastrar fornecedor (RF82) — campos: `companyName`, `tradeName?`, `cnpj?`, `contactName?`, `phone`, `email?`, `address?` (JSONB), `categories?` |
+| `PATCH` | `/api/v1/suppliers/:id` | owner/admin | Atualizar fornecedor. Use `isActive: false` para desativar (RF83) |
+| `DELETE` | `/api/v1/suppliers/:id` | owner/admin | Remover fornecedor — bloqueado se tiver insumos vinculados |
+
+---
+
+### Estoque — Insumos e Movimentações
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/stock` | owner/admin/atendente/cozinha | Listar insumos com flag `isAlert`. Filtros: `?category=`, `?supplierId=`, `?alertOnly=true` (RF72/RF73) |
+| `GET` | `/api/v1/stock/alerts` | owner/admin/atendente | Insumos abaixo do mínimo, ordenados pelo mais crítico (RF74/RN04) |
+| `GET` | `/api/v1/stock/:id` | owner/admin/atendente/cozinha | Detalhes do insumo + fornecedor + últimas 50 movimentações |
+| `POST` | `/api/v1/stock` | owner/admin | Cadastrar insumo. Se `quantity > 0`, cria movimento de entrada "Estoque inicial" (RF72) |
+| `PATCH` | `/api/v1/stock/:id` | owner/admin | Atualizar metadados — não altera quantidade diretamente |
+| `DELETE` | `/api/v1/stock/:id` | owner/admin | Remover insumo — bloqueado se houver movimentações |
+| `POST` | `/api/v1/stock/:id/movements` | owner/admin/atendente | Registrar movimentação (RF75/RF77). Tipos: `entry`, `withdrawal`, `loss`, `adjustment` |
+| `GET` | `/api/v1/stock/:id/movements` | owner/admin/atendente/cozinha | Histórico paginado de movimentações (RF79). Filtro: `?type=` |
+
+**Tipos de movimentação:**
+
+| Tipo | Efeito | Observação |
+|---|---|---|
+| `entry` | +qty ao estoque | Nota fiscal, reposição |
+| `withdrawal` | −qty do estoque | Retirada para uso. Bloqueado se qty > estoque atual |
+| `loss` | −qty do estoque | Perda por vencimento/quebra. Bloqueado se qty > estoque atual |
+| `adjustment` | seta estoque para qty informado | Inventário. `quantity` é o valor absoluto alvo |
+| `auto_debit` | −qty do estoque | Gerado internamente por integração com pedidos (futuro) |
+
+---
+
+### Caixa
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+>
+> **RN03:** abertura, fechamento e sangrias são restritos a roles `owner`, `admin` e `caixa`.
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `GET` | `/api/v1/cash/dashboard` | owner/admin/caixa | Dashboard financeiro: receita hoje/15d/30d, breakdown por pagamento, vendas por hora, taxa de serviço (RF64/RF65/RF70/RF71) |
+| `POST` | `/api/v1/cash/sessions` | owner/admin/caixa | Abrir caixa com `initialAmount` (fundo de troco) — bloqueado se já houver sessão aberta (RF63) |
+| `GET` | `/api/v1/cash/sessions/current` | owner/admin/caixa/atendente | Sessão de caixa aberta no momento com sangrias |
+| `GET` | `/api/v1/cash/sessions` | owner/admin/caixa | Histórico de sessões. `?onlyOpen=true&page=&limit=` |
+| `GET` | `/api/v1/cash/sessions/:id` | owner/admin/caixa | Detalhes de uma sessão com quem abriu/fechou e sangrias |
+| `POST` | `/api/v1/cash/sessions/:id/close` | owner/admin/caixa | Fechar caixa: recebe `actualBalance`, calcula totais por método, saldo esperado e diferença (RF67/RF69) |
+| `POST` | `/api/v1/cash/sessions/:id/withdrawals` | owner/admin/caixa | Registrar sangria com `amount` e `reason` — incrementa `totalWithdrawals` (RF66) |
+| `GET` | `/api/v1/cash/sessions/:id/withdrawals` | owner/admin/caixa | Listar sangrias da sessão |
+
+**Relatório de fechamento (resposta de `POST /cash/sessions/:id/close`):**
+
+| Campo | Descrição |
+|---|---|
+| `totalCash` | Soma de pedidos pagos em dinheiro desde a abertura |
+| `totalCredit` | Soma de pedidos pagos em crédito |
+| `totalDebit` | Soma de pedidos pagos em débito |
+| `totalPix` | Soma de pedidos pagos em PIX |
+| `totalVoucher` | Soma de pedidos pagos em voucher |
+| `totalWithdrawals` | Soma de todas as sangrias da sessão |
+| `expectedBalance` | `initialAmount + totalCash − totalWithdrawals` |
+| `actualBalance` | Valor físico informado pelo operador |
+| `difference` | `actualBalance − expectedBalance` (negativo = falta, positivo = sobra) |
+| `totalServiceFee` | Soma das taxas de serviço dos pedidos do período (RF71) |
 
 ---
 
@@ -1242,8 +1354,8 @@ As fases seguintes vão implementar:
 | ~~**4**~~ | ~~CardápioModule~~ ✅ Implementado |
 | ~~**5**~~ | ~~CustomersModule~~ ✅ Implementado |
 | ~~**6**~~ | ~~OrdersModule~~ ✅ Implementado |
-| **7** | EstoqueModule — fornecedores, estoque, movimentações |
-| **8** | CaixaModule — abertura/fechamento de caixa, retiradas |
+| ~~**7**~~ | ~~EstoqueModule~~ ✅ Implementado _(RF76 baixa automática + RF80/RF81 relatórios → adiados para Fase 10 / ficha técnica futura)_ |
+| ~~**8**~~ | ~~CaixaModule~~ ✅ Implementado |
 | **9** | ChatModule — conversas com clientes, templates |
 | **10** | ReportsModule — relatórios, dashboard |
 

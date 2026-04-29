@@ -1,13 +1,15 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
 import {
@@ -16,19 +18,40 @@ import {
   OrderStatus,
   OrderType,
   Prisma,
+  UserRole,
   type Crust,
 } from '@prisma/client';
 
 export type { JwtPayload } from '../modules/auth/auth.service';
 
 // ---------------------------------------------------------------------------
-// Types
+// Internal types
 // ---------------------------------------------------------------------------
 
 interface FlavorData {
   productId: string;
   name: string;
   price: number;
+}
+
+interface ResolvedItem {
+  productId: string;
+  productSizeId?: string;
+  crustId?: string;
+  quantity: number;
+  unitPrice: Prisma.Decimal;
+  subtotal: Prisma.Decimal;
+  flavors: FlavorData[] | null;
+  notes?: string;
+}
+
+// RN02 — businessHours JSON shape:
+// { "0": { "open": false }, "1": { "open": true, "from": "18:00", "to": "23:30" }, ... }
+// Keys "0"–"6" where 0 = Sunday, following Date.getDay()
+interface DaySchedule {
+  open: boolean;
+  from?: string; // "HH:MM"
+  to?: string;   // "HH:MM"
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +80,7 @@ export class OrdersService {
   ) {}
 
   // -------------------------------------------------------------------------
-  // Helpers
+  // Helpers — price calculation
   // -------------------------------------------------------------------------
 
   private getCrustExtraPrice(crust: Crust, sizeLabel: string): number {
@@ -83,7 +106,6 @@ export class OrdersService {
     sizePrice: number,
   ): number {
     if (flavorPrices.length === 0) return sizePrice;
-
     switch (rule) {
       case FlavorPriceRule.highest:
         return Math.max(...flavorPrices);
@@ -94,61 +116,43 @@ export class OrdersService {
     }
   }
 
+  // RN02 — verifica se o horário atual está dentro da janela configurada
+  private isWithinBusinessHours(businessHours: unknown, now: Date): boolean {
+    if (!businessHours || typeof businessHours !== 'object') return true; // sem config → permite
+
+    const dayKey = String(now.getDay()); // "0"–"6"
+    const schedule = (businessHours as Record<string, DaySchedule>)[dayKey];
+
+    if (!schedule) return true; // dia não configurado → permite
+    if (!schedule.open) return false; // dia marcado como fechado
+
+    if (!schedule.from || !schedule.to) return true; // aberto sem janela → permite
+
+    const toMinutes = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const current = now.getHours() * 60 + now.getMinutes();
+    const from = toMinutes(schedule.from);
+    const to = toMinutes(schedule.to);
+
+    // Suporta janelas que cruzam meia-noite (ex: 22:00–02:00)
+    if (from <= to) return current >= from && current <= to;
+    return current >= from || current <= to;
+  }
+
   // -------------------------------------------------------------------------
-  // Create order — RF03, RF04
+  // Resolve items — reutilizado por create() e updateItems()
   // -------------------------------------------------------------------------
 
-  async create(pizzeriaId: string, dto: CreateOrderDto, userId: string) {
-    if (!dto.items?.length) {
-      throw new BadRequestException('O pedido deve ter pelo menos 1 item');
-    }
+  private async resolveItems(
+    pizzeriaId: string,
+    items: CreateOrderItemDto[],
+  ): Promise<ResolvedItem[]> {
+    const resolved: ResolvedItem[] = [];
 
-    if (dto.type === OrderType.delivery && !dto.deliveryAddressId) {
-      throw new BadRequestException('Endereço de entrega obrigatório para pedido delivery');
-    }
-
-    if (dto.type === OrderType.table && !dto.tableId) {
-      throw new BadRequestException('Mesa obrigatória para pedido tipo mesa');
-    }
-
-    // Carregar configuração da pizzaria (necessário para RN07 e RN10)
-    const config = await this.prisma.db.pizzeriaConfig.findUnique({
-      where: { pizzeriaId },
-      select: {
-        minDeliveryOrder: true,
-        serviceFeePct: true,
-        serviceFeeAppliesTo: true,
-        acceptingOrders: true,
-      },
-    });
-
-    if (config && !config.acceptingOrders) {
-      throw new BadRequestException('A pizzaria não está aceitando pedidos no momento');
-    }
-
-    if (dto.customerId) {
-      const customer = await this.prisma.db.customer.findFirst({
-        where: { id: dto.customerId, pizzeriaId },
-      });
-      if (!customer) throw new NotFoundException('Cliente não encontrado');
-      if (customer.isBlacklisted) {
-        throw new BadRequestException('Cliente está na lista negra e não pode fazer pedidos');
-      }
-    }
-
-    // Resolve and price each item
-    const resolvedItems: Array<{
-      productId: string;
-      productSizeId?: string;
-      crustId?: string;
-      quantity: number;
-      unitPrice: Prisma.Decimal;
-      subtotal: Prisma.Decimal;
-      flavors: FlavorData[] | null;
-      notes?: string;
-    }> = [];
-
-    for (const item of dto.items) {
+    for (const item of items) {
       const product = await this.prisma.db.product.findFirst({
         where: { id: item.productId, pizzeriaId, isActive: true },
       });
@@ -163,9 +167,7 @@ export class OrdersService {
         const size = await this.prisma.db.productSize.findFirst({
           where: { id: item.productSizeId, productId: product.id, isActive: true },
         });
-        if (!size) {
-          throw new NotFoundException(`Tamanho ${item.productSizeId} não encontrado`);
-        }
+        if (!size) throw new NotFoundException(`Tamanho ${item.productSizeId} não encontrado`);
         basePrice = Number(size.price);
         sizeLabel = size.sizeLabel;
       }
@@ -197,15 +199,10 @@ export class OrdersService {
           if (!flavorProduct) {
             throw new NotFoundException(`Sabor ${flavorRef.productId} não encontrado`);
           }
-
           const flavorSize = flavorProduct.sizes[0];
           const flavorPrice = flavorSize ? Number(flavorSize.price) : basePrice;
           flavorPrices.push(flavorPrice);
-          flavorsData.push({
-            productId: flavorProduct.id,
-            name: flavorProduct.name,
-            price: flavorPrice,
-          });
+          flavorsData.push({ productId: flavorProduct.id, name: flavorProduct.name, price: flavorPrice });
         }
 
         unitPrice = this.applyFlavorPriceRule(product.flavorPriceRule, flavorPrices, basePrice);
@@ -216,32 +213,83 @@ export class OrdersService {
           where: { id: item.crustId, pizzeriaId, isActive: true },
         });
         if (!crust) throw new NotFoundException(`Borda ${item.crustId} não encontrada`);
-        if (sizeLabel) {
-          unitPrice += this.getCrustExtraPrice(crust, sizeLabel);
-        }
+        if (sizeLabel) unitPrice += this.getCrustExtraPrice(crust, sizeLabel);
       }
 
       const unitPriceDecimal = new Prisma.Decimal(unitPrice.toFixed(2));
-      const subtotalDecimal = unitPriceDecimal.mul(item.quantity);
-
-      resolvedItems.push({
+      resolved.push({
         productId: item.productId,
         productSizeId: item.productSizeId,
         crustId: item.crustId,
         quantity: item.quantity,
         unitPrice: unitPriceDecimal,
-        subtotal: subtotalDecimal,
+        subtotal: unitPriceDecimal.mul(item.quantity),
         flavors: flavorsData,
         notes: item.notes,
       });
     }
+
+    return resolved;
+  }
+
+  // -------------------------------------------------------------------------
+  // Create order — RF03, RF04
+  // -------------------------------------------------------------------------
+
+  async create(pizzeriaId: string, dto: CreateOrderDto, userId: string) {
+    if (!dto.items?.length) {
+      throw new BadRequestException('O pedido deve ter pelo menos 1 item');
+    }
+    if (dto.type === OrderType.delivery && !dto.deliveryAddressId) {
+      throw new BadRequestException('Endereço de entrega obrigatório para pedido delivery');
+    }
+    if (dto.type === OrderType.table && !dto.tableId) {
+      throw new BadRequestException('Mesa obrigatória para pedido tipo mesa');
+    }
+
+    // Carregar configuração da pizzaria (RN02, RN07, RN10)
+    const config = await this.prisma.db.pizzeriaConfig.findUnique({
+      where: { pizzeriaId },
+      select: {
+        minDeliveryOrder: true,
+        serviceFeePct: true,
+        serviceFeeAppliesTo: true,
+        acceptingOrders: true,
+        businessHours: true,
+      },
+    });
+
+    if (config && !config.acceptingOrders) {
+      throw new BadRequestException('A pizzaria não está aceitando pedidos no momento');
+    }
+
+    // RN02 — horário de funcionamento (apenas delivery)
+    if (dto.type === OrderType.delivery && config?.businessHours) {
+      if (!this.isWithinBusinessHours(config.businessHours, new Date())) {
+        throw new BadRequestException(
+          'Pedidos delivery não são aceitos fora do horário de funcionamento (RN02)',
+        );
+      }
+    }
+
+    if (dto.customerId) {
+      const customer = await this.prisma.db.customer.findFirst({
+        where: { id: dto.customerId, pizzeriaId },
+      });
+      if (!customer) throw new NotFoundException('Cliente não encontrado');
+      if (customer.isBlacklisted) {
+        throw new BadRequestException('Cliente está na lista negra e não pode fazer pedidos');
+      }
+    }
+
+    const resolvedItems = await this.resolveItems(pizzeriaId, dto.items);
 
     const subtotal = resolvedItems.reduce(
       (sum, i) => sum.plus(i.subtotal),
       new Prisma.Decimal(0),
     );
 
-    // RN07 — valor mínimo de pedido delivery
+    // RN07 — valor mínimo delivery
     if (dto.type === OrderType.delivery && config?.minDeliveryOrder) {
       if (subtotal.lessThan(config.minDeliveryOrder)) {
         throw new BadRequestException(
@@ -250,7 +298,7 @@ export class OrdersService {
       }
     }
 
-    // Coupon validation — RN06
+    // RN06 — cupom
     let discount = new Prisma.Decimal(0);
     let couponId: string | undefined;
 
@@ -273,9 +321,7 @@ export class OrdersService {
         throw new BadRequestException('Cupom atingiu o limite máximo de usos');
       }
       if (coupon.maxUsesPerCpf && dto.customerId) {
-        const customer = await this.prisma.db.customer.findUnique({
-          where: { id: dto.customerId },
-        });
+        const customer = await this.prisma.db.customer.findUnique({ where: { id: dto.customerId } });
         if (customer?.cpf) {
           const cpfCustomers = await this.prisma.db.customer.findMany({
             where: { cpf: customer.cpf, pizzeriaId },
@@ -289,23 +335,18 @@ export class OrdersService {
         }
       }
 
-      if (coupon.discountType === DiscountType.percentage) {
-        discount = subtotal.mul(coupon.discountValue.div(100));
-      } else {
-        discount = Prisma.Decimal.min(coupon.discountValue, subtotal);
-      }
-
+      discount = coupon.discountType === DiscountType.percentage
+        ? subtotal.mul(coupon.discountValue.div(100))
+        : Prisma.Decimal.min(coupon.discountValue, subtotal);
       couponId = coupon.id;
     }
 
     const deliveryFee = new Prisma.Decimal(0);
 
-    // RN10 — taxa de serviço calculada de PizzeriaConfig (informativa)
+    // RN10 — taxa de serviço
     let serviceFee = new Prisma.Decimal(0);
     if (config?.serviceFeePct && Number(config.serviceFeePct) > 0) {
-      const applies =
-        config.serviceFeeAppliesTo === 'all' ||
-        config.serviceFeeAppliesTo === dto.type;
+      const applies = config.serviceFeeAppliesTo === 'all' || config.serviceFeeAppliesTo === dto.type;
       if (applies) {
         serviceFee = subtotal.mul(config.serviceFeePct).div(100).toDecimalPlaces(2);
       }
@@ -375,6 +416,104 @@ export class OrdersService {
     });
 
     return order;
+  }
+
+  // -------------------------------------------------------------------------
+  // RF09 — Editar itens do pedido (apenas status = accepted)
+  // -------------------------------------------------------------------------
+
+  async updateItems(
+    pizzeriaId: string,
+    id: string,
+    dto: UpdateOrderItemsDto,
+    userId: string,
+  ) {
+    if (!dto.items?.length) {
+      throw new BadRequestException('O pedido deve ter pelo menos 1 item');
+    }
+
+    const order = await this.prisma.db.order.findFirst({
+      where: { id, pizzeriaId },
+      include: { coupon: true },
+    });
+    if (!order) throw new NotFoundException('Pedido não encontrado');
+
+    if (order.status !== OrderStatus.accepted) {
+      throw new UnprocessableEntityException(
+        `Edição de itens só é permitida no status "accepted". Status atual: "${order.status}"`,
+      );
+    }
+
+    const resolvedItems = await this.resolveItems(pizzeriaId, dto.items);
+
+    const subtotal = resolvedItems.reduce(
+      (sum, i) => sum.plus(i.subtotal),
+      new Prisma.Decimal(0),
+    );
+
+    // Recalcular desconto do cupom original
+    let discount = new Prisma.Decimal(0);
+    if (order.coupon) {
+      if (order.coupon.discountType === DiscountType.percentage) {
+        discount = subtotal.mul(order.coupon.discountValue.div(100));
+      } else {
+        discount = Prisma.Decimal.min(order.coupon.discountValue, subtotal);
+      }
+    }
+
+    // Recalcular taxa de serviço
+    const config = await this.prisma.db.pizzeriaConfig.findUnique({
+      where: { pizzeriaId },
+      select: { serviceFeePct: true, serviceFeeAppliesTo: true },
+    });
+    let serviceFee = new Prisma.Decimal(0);
+    if (config?.serviceFeePct && Number(config.serviceFeePct) > 0) {
+      const applies = config.serviceFeeAppliesTo === 'all' || config.serviceFeeAppliesTo === order.type;
+      if (applies) {
+        serviceFee = subtotal.mul(config.serviceFeePct).div(100).toDecimalPlaces(2);
+      }
+    }
+
+    const total = subtotal.minus(discount).plus(order.deliveryFee).plus(serviceFee);
+
+    const updated = await this.prisma.db.$transaction(async (tx) => {
+      await tx.orderItem.deleteMany({ where: { orderId: id } });
+
+      return tx.order.update({
+        where: { id },
+        data: {
+          subtotal,
+          discount,
+          serviceFee,
+          total,
+          items: {
+            create: resolvedItems.map((i) => ({
+              productId: i.productId,
+              productSizeId: i.productSizeId,
+              crustId: i.crustId,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              subtotal: i.subtotal,
+              flavors: i.flavors ? (i.flavors as unknown as Prisma.InputJsonValue) : undefined,
+              notes: i.notes,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+    });
+
+    await this.audit.log({
+      userId,
+      pizzeriaId,
+      action: 'order.update_items',
+      entity: 'Order',
+      entityId: id,
+      before: { subtotal: String(order.subtotal), total: String(order.total) },
+      after: { subtotal: String(subtotal), total: String(total) },
+    });
+
+    return updated;
   }
 
   // -------------------------------------------------------------------------
@@ -506,7 +645,7 @@ export class OrdersService {
       throw new BadRequestException('Status "delivering" é exclusivo de pedidos delivery');
     }
 
-    // RN08 — entregador obrigatório antes de transitar para "delivering"
+    // RN08 — entregador obrigatório antes de "delivering"
     if (dto.status === OrderStatus.delivering && !order.delivererId) {
       throw new BadRequestException(
         'Atribua um entregador ao pedido antes de marcá-lo como "Em Entrega" (RN08)',
@@ -534,7 +673,7 @@ export class OrdersService {
         },
       });
 
-      // RF52: increment loyalty stamp when order is done
+      // RF52 — selos de fidelidade ao finalizar
       if (dto.status === OrderStatus.done && order.customerId) {
         await tx.customer.update({
           where: { id: order.customerId },
@@ -559,10 +698,16 @@ export class OrdersService {
   }
 
   // -------------------------------------------------------------------------
-  // Cancel order — RF08
+  // Cancel order — RF08 + RN05
   // -------------------------------------------------------------------------
 
-  async cancel(pizzeriaId: string, id: string, dto: CancelOrderDto, userId: string) {
+  async cancel(
+    pizzeriaId: string,
+    id: string,
+    dto: CancelOrderDto,
+    userId: string,
+    userRole: UserRole,
+  ) {
     const order = await this.prisma.db.order.findFirst({ where: { id, pizzeriaId } });
     if (!order) throw new NotFoundException('Pedido não encontrado');
 
@@ -570,6 +715,15 @@ export class OrdersService {
       throw new UnprocessableEntityException(
         `Pedido no status "${order.status}" não pode ser cancelado`,
       );
+    }
+
+    // RN05 — cancelamento após pagamento exige Admin/Owner
+    if (order.paymentStatus === 'paid') {
+      if (userRole !== UserRole.owner && userRole !== UserRole.admin) {
+        throw new ForbiddenException(
+          'Cancelamento de pedido já pago requer aprovação de Admin ou Owner (RN05)',
+        );
+      }
     }
 
     const updated = await this.prisma.db.order.update({
@@ -587,7 +741,7 @@ export class OrdersService {
       action: 'order.cancel',
       entity: 'Order',
       entityId: id,
-      before: { status: order.status },
+      before: { status: order.status, paymentStatus: order.paymentStatus },
       after: { status: 'cancelled', cancelReason: dto.reason },
     });
 
@@ -622,10 +776,7 @@ export class OrdersService {
 
     const updated = await this.prisma.db.order.update({
       where: { id },
-      data: {
-        paymentMethod: dto.method,
-        paymentStatus: 'paid',
-      },
+      data: { paymentMethod: dto.method, paymentStatus: 'paid' },
     });
 
     await this.audit.log({
