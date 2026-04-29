@@ -15,25 +15,32 @@ import { FlavorPriceRule } from '@prisma/client';
 export class CreateProductDto {
   @ApiProperty({ example: 'uuid-da-categoria' })
   @IsUUID()
-  categoryId: string;
+  categoryId!: string;
 
   @ApiProperty({ example: 'Margherita' })
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  name: string;
+  name!: string;
 
   @ApiPropertyOptional({ example: 'Molho de tomate, mussarela e manjericao' })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ example: true, default: false, description: 'E uma pizza (exibe sabores/bordas)' })
+  @ApiPropertyOptional({
+    example: true,
+    default: false,
+    description: 'E uma pizza (exibe sabores/bordas)',
+  })
   @IsOptional()
   @IsBoolean()
   isPizza?: boolean;
 
-  @ApiPropertyOptional({ example: 2, description: 'Maximo de sabores (apenas para pizzas)' })
+  @ApiPropertyOptional({
+    example: 2,
+    description: 'Maximo de sabores (apenas para pizzas)',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -42,13 +49,17 @@ export class CreateProductDto {
   @ApiPropertyOptional({
     enum: FlavorPriceRule,
     default: 'highest',
-    description: 'Regra de preco para pizzas fracionadas (RN01): highest = sabor mais caro, average = media, fixed = preco fixo do tamanho',
+    description:
+      'Regra de preco para pizzas fracionadas (RN01): highest = sabor mais caro, average = media, fixed = preco fixo do tamanho',
   })
   @IsOptional()
   @IsEnum(FlavorPriceRule)
   flavorPriceRule?: FlavorPriceRule;
 
-  @ApiPropertyOptional({ example: 30, description: 'Tempo de preparo em minutos' })
+  @ApiPropertyOptional({
+    example: 30,
+    description: 'Tempo de preparo em minutos',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

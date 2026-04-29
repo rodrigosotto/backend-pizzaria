@@ -12,6 +12,7 @@ import { PizzeriaModule } from './pizzeria/pizzeria.module';
 import { HubModule } from './hub/hub.module';
 import { CardapioModule } from './cardapio/cardapio.module';
 import { CustomersModule } from './customers/customers.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CustomersModule } from './customers/customers.module';
     HubModule,
     CardapioModule,
     CustomersModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

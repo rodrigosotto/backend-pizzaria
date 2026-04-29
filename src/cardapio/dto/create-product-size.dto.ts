@@ -15,14 +15,17 @@ export class CreateProductSizeDto {
   @IsString()
   @MinLength(1)
   @MaxLength(30)
-  sizeLabel: string;
+  sizeLabel!: string;
 
   @ApiProperty({ example: 49.9 })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  price: number;
+  price!: number;
 
-  @ApiPropertyOptional({ example: 2, description: 'Máximo de sabores neste tamanho' })
+  @ApiPropertyOptional({
+    example: 2,
+    description: 'Máximo de sabores neste tamanho',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

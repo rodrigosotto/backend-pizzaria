@@ -14,27 +14,43 @@ export class CreateCrustDto {
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  name: string;
+  name!: string;
 
-  @ApiPropertyOptional({ example: 0, default: 0, description: 'Preço extra para tamanho P' })
+  @ApiPropertyOptional({
+    example: 0,
+    default: 0,
+    description: 'Preço extra para tamanho P',
+  })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   extraPriceS?: number;
 
-  @ApiPropertyOptional({ example: 5, default: 0, description: 'Preço extra para tamanho M' })
+  @ApiPropertyOptional({
+    example: 5,
+    default: 0,
+    description: 'Preço extra para tamanho M',
+  })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   extraPriceM?: number;
 
-  @ApiPropertyOptional({ example: 7, default: 0, description: 'Preço extra para tamanho G' })
+  @ApiPropertyOptional({
+    example: 7,
+    default: 0,
+    description: 'Preço extra para tamanho G',
+  })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   extraPriceL?: number;
 
-  @ApiPropertyOptional({ example: 9, default: 0, description: 'Preço extra para tamanho GG' })
+  @ApiPropertyOptional({
+    example: 9,
+    default: 0,
+    description: 'Preço extra para tamanho GG',
+  })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)

@@ -19,9 +19,12 @@ import {
 export class ComboItemDto {
   @ApiProperty({ example: 'uuid-do-produto' })
   @IsUUID()
-  productId: string;
+  productId!: string;
 
-  @ApiPropertyOptional({ example: 'uuid-do-tamanho', description: 'Tamanho especifico do produto (opcional)' })
+  @ApiPropertyOptional({
+    example: 'uuid-do-tamanho',
+    description: 'Tamanho especifico do produto (opcional)',
+  })
   @IsOptional()
   @IsUUID()
   productSizeId?: string;
@@ -38,7 +41,7 @@ export class CreateComboDto {
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  name: string;
+  name!: string;
 
   @ApiPropertyOptional({ example: '2 pizzas grandes + 1 refrigerante 2L' })
   @IsOptional()
@@ -48,21 +51,30 @@ export class CreateComboDto {
   @ApiProperty({ example: 89.9, description: 'Preco especial do combo' })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  price: number;
+  price!: number;
 
-  @ApiProperty({ type: [ComboItemDto], description: 'Produtos que compoem o combo' })
+  @ApiProperty({
+    type: [ComboItemDto],
+    description: 'Produtos que compoem o combo',
+  })
   @IsArray()
   @ArrayMinSize(2)
   @ValidateNested({ each: true })
   @Type(() => ComboItemDto)
-  items: ComboItemDto[];
+  items!: ComboItemDto[];
 
-  @ApiPropertyOptional({ example: '2026-05-01T00:00:00Z', description: 'Inicio da vigencia (null = sempre valido)' })
+  @ApiPropertyOptional({
+    example: '2026-05-01T00:00:00Z',
+    description: 'Inicio da vigencia (null = sempre valido)',
+  })
   @IsOptional()
   @IsDateString()
   validFrom?: string;
 
-  @ApiPropertyOptional({ example: '2026-05-31T23:59:59Z', description: 'Fim da vigencia (null = sem expiracao)' })
+  @ApiPropertyOptional({
+    example: '2026-05-31T23:59:59Z',
+    description: 'Fim da vigencia (null = sem expiracao)',
+  })
   @IsOptional()
   @IsDateString()
   validTo?: string;

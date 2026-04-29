@@ -16,10 +16,11 @@
 7. [Fase 3 — Pizzerias e Hub](#7-fase-3--pizzerias-e-hub)
 8. [Fase 4 — Cardápio](#8-fase-4--cardápio)
 9. [Fase 5 — Clientes](#9-fase-5--clientes)
-10. [Banco de dados — estado atual](#10-banco-de-dados--estado-atual)
-11. [Endpoints disponíveis](#11-endpoints-disponíveis)
-12. [Padrões de resposta da API](#12-padrões-de-resposta-da-api)
-13. [O que ainda NÃO existe](#13-o-que-ainda-não-existe)
+10. [Fase 6 — Pedidos](#10-fase-6--pedidos)
+11. [Banco de dados — estado atual](#11-banco-de-dados--estado-atual)
+12. [Endpoints disponíveis](#12-endpoints-disponíveis)
+13. [Padrões de resposta da API](#13-padrões-de-resposta-da-api)
+14. [O que ainda NÃO existe](#14-o-que-ainda-não-existe)
 
 ---
 
@@ -723,7 +724,114 @@ Todos os endpoints exigem JWT + `X-Pizzeria-Id`. Clientes são isolados por pizz
 ---
 
 
-## 10. Banco de dados — estado atual
+## 10. Fase 6 — Pedidos
+
+### O que foi construído
+
+Módulo completo de criação e ciclo de vida de pedidos: delivery, mesa e balcão. Inclui cálculo de preço com suporte a pizzas fracionadas, validação de cupons, transições de status, cancelamento com motivo e registro de pagamento.
+
+---
+
+### 10.1 OrdersModule (`src/orders/`)
+
+Todos os endpoints exigem JWT + `X-Pizzeria-Id`. Pedidos são isolados por pizzaria (`pizzeriaId`).
+
+---
+
+### 10.2 Criação de pedido (`POST /orders`)
+
+**Tipos suportados:** `delivery` | `table` | `counter`
+
+Ao criar um pedido o sistema:
+1. Valida cada produto (ativo, pertence à pizzaria)
+2. Calcula o preço de cada item (ver 10.3)
+3. Valida o cupom se informado (RN06)
+4. Atribui um `orderNumber` sequencial por pizzaria dentro de `$transaction`
+5. Persiste pedido + itens + uso do cupom atomicamente
+
+**Validações:**
+- `delivery` exige `deliveryAddressId`
+- `table` exige `tableId`
+- Cliente na blacklist não pode fazer pedidos
+
+---
+
+### 10.3 Cálculo de preço (RN01)
+
+**Itens simples:** `unitPrice = ProductSize.price`
+
+**Pizzas fracionadas** (quando `flavors` é informado):
+
+| `flavorPriceRule` | Lógica |
+|---|---|
+| `highest` (padrão) | Cobra o preço do sabor mais caro |
+| `average` | Cobra a média dos preços dos sabores |
+| `fixed` | Cobra o preço fixo do tamanho, ignora sabores |
+
+O campo `flavors` no `OrderItem` armazena o snapshot dos sabores no momento do pedido:
+```json
+[
+  { "productId": "uuid", "name": "Margherita", "price": 35.00 },
+  { "productId": "uuid", "name": "Calabresa",  "price": 32.00 }
+]
+```
+
+**Borda recheada:** `extraPrice` é somado ao `unitPrice` baseado no tamanho (P/M/G/GG).
+
+---
+
+### 10.4 Cupons (RN06)
+
+Validações realizadas no servidor ao criar o pedido:
+
+| Validação | Campo |
+|---|---|
+| Cupom ativo e não expirado | `isActive`, `expiresAt` |
+| Valor mínimo do pedido | `minOrderValue` |
+| Limite total de usos | `maxUsesTotal` |
+| Limite por CPF do cliente | `maxUsesPerCpf` |
+
+Tipos de desconto: `percentage` (ex: 10%) ou `fixed` (valor fixo em R$).
+
+---
+
+### 10.5 Ciclo de vida do pedido
+
+```
+new → accepted → preparing → ready → delivering → done
+                                    ↘ done (balcão/mesa)
+any non-terminal → cancelled
+```
+
+Timestamps são preenchidos automaticamente a cada transição:
+
+| Status | Campo preenchido |
+|---|---|
+| `accepted` | `acceptedAt` |
+| `ready` | `readyAt` |
+| `done` | `deliveredAt` |
+| `cancelled` | `cancelledAt` |
+
+**`delivering`** é exclusivo de pedidos do tipo `delivery`.
+
+**Fidelidade (RF52):** ao marcar como `done`, o sistema incrementa `customer.loyaltyStamps` em 1 automaticamente via `$transaction`.
+
+---
+
+### 10.6 Cancelamento (RF08)
+
+`PATCH /orders/:id/cancel` exige `reason` (mínimo 3 caracteres). O motivo é gravado em `cancelReason` e registrado em auditoria. Pedidos nos status `done` ou `cancelled` não podem ser cancelados.
+
+---
+
+### 10.7 Número do pedido
+
+`orderNumber` é sequencial por pizzaria — começa em 1 e incrementa em cada pedido. Útil para exibição em KDS/cozinha e busca rápida via `GET /orders/number/:orderNumber`.
+
+---
+
+
+## 11. Banco de dados — estado atual
 
 ### Está gravando no Supabase?
 
@@ -788,7 +896,7 @@ Ou acesse o Supabase dashboard → Table Editor e veja se as tabelas aparecem.
 
 ---
 
-## 11. Endpoints disponíveis
+## 12. Endpoints disponíveis
 
 ### Legenda
 
@@ -1040,6 +1148,22 @@ Header: Authorization: Bearer eyJhbGci...
 
 ---
 
+### Pedidos
+
+> Todos os endpoints exigem `Authorization: Bearer <token>` + `X-Pizzeria-Id: <id>`
+
+| Método | Rota | Roles | Descrição |
+|---|---|---|---|
+| `POST` | `/api/v1/orders` | owner/admin/atendente | Criar pedido (delivery, mesa ou balcão) |
+| `GET` | `/api/v1/orders` | owner/admin/atendente/cozinha/caixa | Listar com filtros: `?status=`, `?type=`, `?customerId=`, `?dateFrom=`, `?dateTo=`, `?page=`, `?limit=` |
+| `GET` | `/api/v1/orders/number/:orderNumber` | owner/admin/atendente/cozinha/caixa | Busca rápida por número do pedido (RF05) |
+| `GET` | `/api/v1/orders/:id` | owner/admin/atendente/cozinha/caixa | Detalhes completos com itens, sabores, cliente e cupom |
+| `PATCH` | `/api/v1/orders/:id/status` | owner/admin/atendente/cozinha | Avançar status do pedido (RF06/RF07) |
+| `PATCH` | `/api/v1/orders/:id/cancel` | owner/admin/atendente | Cancelar com motivo obrigatório (RF08) |
+| `PATCH` | `/api/v1/orders/:id/payment` | owner/admin/atendente/caixa | Registrar forma de pagamento |
+
+---
+
 #### PATCH /users/:id
 
 ```json
@@ -1065,7 +1189,7 @@ Acesse `http://localhost:3000/docs` com o servidor rodando. Lá você pode:
 
 ---
 
-## 12. Padrões de resposta da API
+## 13. Padrões de resposta da API
 
 ### Resposta de sucesso
 
@@ -1109,7 +1233,7 @@ Quando o body não passa na validação do `ValidationPipe`:
 
 ---
 
-## 13. O que ainda NÃO existe
+## 14. O que ainda NÃO existe
 
 As fases seguintes vão implementar:
 
@@ -1117,7 +1241,7 @@ As fases seguintes vão implementar:
 |---|---|
 | ~~**4**~~ | ~~CardápioModule~~ ✅ Implementado |
 | ~~**5**~~ | ~~CustomersModule~~ ✅ Implementado |
-| **6** | OrdersModule — criação e ciclo de vida de pedidos |
+| ~~**6**~~ | ~~OrdersModule~~ ✅ Implementado |
 | **7** | EstoqueModule — fornecedores, estoque, movimentações |
 | **8** | CaixaModule — abertura/fechamento de caixa, retiradas |
 | **9** | ChatModule — conversas com clientes, templates |
