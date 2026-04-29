@@ -5,9 +5,9 @@ import { PizzeriaUserRole } from '@prisma/client';
 export class InviteUserDto {
   @ApiProperty({ example: 'colaborador@email.com' })
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty({ enum: PizzeriaUserRole, example: PizzeriaUserRole.atendente })
   @IsEnum(PizzeriaUserRole)
-  role: PizzeriaUserRole;
+  role!: PizzeriaUserRole;
 }

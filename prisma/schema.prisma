@@ -103,6 +103,13 @@ enum DeliveryZoneType {
   radius
 }
 
+/// Regra de cálculo de preço para pizzas com múltiplos sabores (RN01)
+enum FlavorPriceRule {
+  highest  /// (A) Preço do sabor mais caro — padrão
+  average  /// (B) Média dos preços dos sabores
+  fixed    /// (C) Preço fixo do tamanho selecionado
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,6 +157,7 @@ model Pizzeria {
   categories      ProductCategory[]
   products        Product[]
   crusts          Crust[]
+  combos          Combo[]
   customers       Customer[]
   tables          Table[]
   deliverers      Deliverer[]
@@ -233,16 +241,18 @@ model Product {
   name            String   @db.VarChar(100)
   description     String?
   imageUrl        String?  @map("image_url")
-  isActive        Boolean  @default(true) @map("is_active")
-  isPizza         Boolean  @default(false) @map("is_pizza")
-  maxFlavors      Int?     @map("max_flavors")
-  preparationTime Int?     @map("preparation_time")
-  createdAt       DateTime @default(now()) @map("created_at")
+  isActive         Boolean          @default(true) @map("is_active")
+  isPizza          Boolean          @default(false) @map("is_pizza")
+  maxFlavors       Int?             @map("max_flavors")
+  flavorPriceRule  FlavorPriceRule  @default(highest) @map("flavor_price_rule")
+  preparationTime  Int?             @map("preparation_time")
+  createdAt        DateTime         @default(now()) @map("created_at")
 
   pizzeria   Pizzeria        @relation(fields: [pizzeriaId], references: [id])
   category   ProductCategory @relation(fields: [categoryId], references: [id])
   sizes      ProductSize[]
   orderItems OrderItem[]
+  comboItems ComboItem[]
 
   @@map("products")
 }
@@ -258,6 +268,7 @@ model ProductSize {
 
   product    Product     @relation(fields: [productId], references: [id])
   orderItems OrderItem[]
+  comboItems ComboItem[]
 
   @@map("product_sizes")
 }
@@ -277,6 +288,40 @@ model Crust {
   orderItems OrderItem[]
 
   @@map("crusts")
+}
+
+/// Combos e promoções do cardápio (RF19)
+model Combo {
+  id          String    @id @default(uuid())
+  pizzeriaId  String    @map("pizzeria_id")
+  name        String    @db.VarChar(100)
+  description String?
+  imageUrl    String?   @map("image_url")
+  price       Decimal   @db.Decimal(10, 2)
+  isActive    Boolean   @default(true) @map("is_active")
+  validFrom   DateTime? @map("valid_from")
+  validTo     DateTime? @map("valid_to")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  pizzeria Pizzeria    @relation(fields: [pizzeriaId], references: [id])
+  items    ComboItem[]
+
+  @@map("combos")
+}
+
+/// Itens que compõem um combo
+model ComboItem {
+  id            String  @id @default(uuid())
+  comboId       String  @map("combo_id")
+  productId     String  @map("product_id")
+  productSizeId String? @map("product_size_id")
+  quantity      Int     @default(1)
+
+  combo       Combo        @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id])
+  productSize ProductSize? @relation(fields: [productSizeId], references: [id])
+
+  @@map("combo_items")
 }
 
 /// Clientes da pizzaria

@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { describe, beforeEach, it } from 'node:test';
+import { expect } from '@jest/globals';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -8,15 +10,24 @@ describe('AppController', () => {
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [
+        {
+          provide: AppService,
+          useValue: {
+            getHello: () => 'Pizza API — Sistema de Gestão de Pizzarias',
+          },
+        },
+      ],
     }).compile();
 
     appController = app.get<AppController>(AppController);
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return the API identification string', () => {
+      expect(appController.getHello()).toBe(
+        'Pizza API — Sistema de Gestão de Pizzarias',
+      );
     });
   });
 });

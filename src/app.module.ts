@@ -10,6 +10,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { PizzeriaModule } from './pizzeria/pizzeria.module';
 import { HubModule } from './hub/hub.module';
+import { CardapioModule } from './cardapio/cardapio.module';
+import { CustomersModule } from './customers/customers.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { HubModule } from './hub/hub.module';
     UsersModule,
     PizzeriaModule,
     HubModule,
+    CardapioModule,
+    CustomersModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

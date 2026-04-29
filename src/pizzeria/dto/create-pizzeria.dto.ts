@@ -13,7 +13,7 @@ export class CreatePizzeriaDto {
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  tradeName: string;
+  tradeName!: string;
 
   @ApiPropertyOptional({ example: 'João Silva ME' })
   @IsOptional()
@@ -30,7 +30,7 @@ export class CreatePizzeriaDto {
   @ApiProperty({ example: '11999999999' })
   @IsString()
   @MaxLength(20)
-  phone: string;
+  phone!: string;
 
   @ApiPropertyOptional({ example: 'contato@pizzaria.com' })
   @IsOptional()
@@ -49,5 +49,5 @@ export class CreatePizzeriaDto {
     },
   })
   @IsObject()
-  address: Record<string, unknown>;
+  address!: Record<string, unknown>;
 }

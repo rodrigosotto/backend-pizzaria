@@ -8,7 +8,7 @@ import {
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { Roles } from '../modules/auth/decorators/roles.decorator';
-import { HubService, type JwtPayload } from './hub.service';
+import { HubService, type JwtPayload, type PizzeriaSummary } from './hub.service';
 
 @ApiTags('Hub')
 @ApiBearerAuth('access-token')
@@ -35,7 +35,7 @@ export class HubController {
       '`cash_open` (true se existe uma CashSession sem closedAt aberta hoje), ' +
       '`stock_alerts` (contagem de StockItems com quantity <= min_quantity).',
   })
-  getSummary(@CurrentUser() user: JwtPayload) {
+  getSummary(@CurrentUser() user: JwtPayload): Promise<PizzeriaSummary[]> {
     return this.hubService.getSummary(user);
   }
 

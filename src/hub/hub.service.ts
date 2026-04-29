@@ -8,7 +8,7 @@ export interface JwtPayload {
   role: UserRole;
 }
 
-interface PizzeriaSummary {
+export interface PizzeriaSummary {
   pizzeria_id: string;
   name: string;
   logo_url: string | null;
