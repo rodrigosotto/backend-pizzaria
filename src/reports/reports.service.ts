@@ -254,16 +254,15 @@ export class ReportsService {
   /**
    * RF81 — Consolidação de insumos necessários baseada nos pedidos do período.
    *
-   * Nota: a correlação produto→insumo requer ficha técnica (product_recipes),
-   * tabela ainda não implementada. Este endpoint retorna os dois lados separados:
-   * - produtos vendidos no período (a partir de OrderItems)
-   * - insumos consumidos no mesmo período (a partir de StockMovements)
-   * A consolidação automática será possível após implementação da ficha técnica.
+   * Retorna três dimensões:
+   * - productsSold: produtos vendidos no período
+   * - expectedConsumption: insumos esperados baseados na ficha técnica (product_recipes)
+   * - actualConsumption: insumos realmente consumidos (stock_movements)
    */
   async getStockConsolidation(pizzeriaId: string, filters: ReportFiltersDto) {
     const { from, to } = parsePeriod(filters);
 
-    const [productsSold, stockConsumed] = await Promise.all([
+    const [productsSold, expectedConsumption, actualConsumption] = await Promise.all([
       // Produtos vendidos: quantidade e receita
       this.prisma.db.$queryRaw<
         Array<{ product_id: string; product_name: string; quantity: bigint; revenue: string }>
@@ -283,7 +282,34 @@ export class ReportsService {
         ORDER BY quantity DESC
       `,
 
-      // Insumos consumidos: total saído do estoque
+      // Consumo esperado pela ficha técnica: soma(qtd_vendida × qtd_receita) por insumo
+      this.prisma.db.$queryRaw<
+        Array<{
+          stock_item_id: string;
+          name: string;
+          unit: string;
+          category: string;
+          expected_quantity: string;
+        }>
+      >`
+        SELECT
+          si.id              AS stock_item_id,
+          si.name,
+          si.unit,
+          si.category,
+          SUM(oi.quantity * pr.quantity)::text AS expected_quantity
+        FROM order_items oi
+        JOIN orders           o  ON o.id  = oi.order_id
+        JOIN product_recipes  pr ON pr.product_id = oi.product_id
+        JOIN stock_items       si ON si.id = pr.stock_item_id
+        WHERE o.pizzeria_id    = ${pizzeriaId}
+          AND o.payment_status = 'paid'
+          AND o.created_at     BETWEEN ${from} AND ${to}
+        GROUP BY si.id, si.name, si.unit, si.category
+        ORDER BY expected_quantity DESC
+      `,
+
+      // Insumos realmente consumidos (movimentos de saída no período)
       this.prisma.db.$queryRaw<
         Array<{ stock_item_id: string; name: string; unit: string; category: string; total_consumed: string }>
       >`
@@ -305,14 +331,20 @@ export class ReportsService {
 
     return {
       period: { from: from.toISOString(), to: to.toISOString() },
-      note: 'Consolidação parcial — o vínculo automático produto→insumo requer ficha técnica (não implementada). Os dois lados são exibidos independentemente.',
       productsSold: productsSold.map((r) => ({
         productId:   r.product_id,
         productName: r.product_name,
         quantity:    Number(r.quantity),
         revenue:     Number(r.revenue),
       })),
-      stockConsumed: stockConsumed.map((r) => ({
+      expectedConsumption: expectedConsumption.map((r) => ({
+        stockItemId:      r.stock_item_id,
+        name:             r.name,
+        unit:             r.unit,
+        category:         r.category,
+        expectedQuantity: Number(r.expected_quantity),
+      })),
+      actualConsumption: actualConsumption.map((r) => ({
         stockItemId:   r.stock_item_id,
         name:          r.name,
         unit:          r.unit,

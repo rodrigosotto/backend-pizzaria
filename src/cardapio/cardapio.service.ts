@@ -17,6 +17,7 @@ import { CreateCrustDto } from './dto/create-crust.dto';
 import { UpdateCrustDto } from './dto/update-crust.dto';
 import { CreateComboDto } from './dto/create-combo.dto';
 import { UpdateComboDto } from './dto/update-combo.dto';
+import { UpsertRecipeItemDto } from './dto/product-recipe.dto';
 import * as path from 'path';
 
 export interface JwtPayload {
@@ -570,6 +571,87 @@ export class CardapioService {
     });
 
     return { message: 'Combo removido com sucesso' };
+  }
+
+  // ── Product Recipes (ficha técnica) ───────────────────────────────────────
+
+  private async findProductOrThrow(pizzeriaId: string, productId: string) {
+    const product = await this.prisma.db.product.findFirst({
+      where: { id: productId, pizzeriaId },
+    });
+    if (!product) throw new NotFoundException('Produto não encontrado nesta pizzaria');
+    return product;
+  }
+
+  async getRecipe(pizzeriaId: string, productId: string) {
+    await this.findProductOrThrow(pizzeriaId, productId);
+
+    const items = await this.prisma.db.productRecipe.findMany({
+      where: { productId },
+      include: {
+        stockItem: {
+          select: { id: true, name: true, unit: true, category: true, costPerUnit: true, quantity: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      productId,
+      items: items.map((r) => ({
+        id:        r.id,
+        stockItem: r.stockItem,
+        quantity:  Number(r.quantity),
+      })),
+    };
+  }
+
+  async upsertRecipeItem(pizzeriaId: string, productId: string, dto: UpsertRecipeItemDto, user: JwtPayload) {
+    await this.findProductOrThrow(pizzeriaId, productId);
+
+    // Valida que o insumo pertence à mesma pizzaria
+    const stockItem = await this.prisma.db.stockItem.findFirst({
+      where: { id: dto.stockItemId, pizzeriaId },
+    });
+    if (!stockItem) throw new NotFoundException('Insumo não encontrado nesta pizzaria');
+
+    const item = await this.prisma.db.productRecipe.upsert({
+      where: { productId_stockItemId: { productId, stockItemId: dto.stockItemId } },
+      create: { productId, stockItemId: dto.stockItemId, quantity: dto.quantity },
+      update: { quantity: dto.quantity },
+      include: {
+        stockItem: { select: { id: true, name: true, unit: true, category: true } },
+      },
+    });
+
+    await this.audit.log({
+      pizzeriaId, userId: user.sub, action: 'RECIPE_ITEM_UPSERTED',
+      entity: 'ProductRecipe', entityId: item.id,
+      after: { productId, stockItemId: dto.stockItemId, quantity: dto.quantity } as Record<string, unknown>,
+    });
+
+    return { id: item.id, stockItem: item.stockItem, quantity: Number(item.quantity) };
+  }
+
+  async removeRecipeItem(pizzeriaId: string, productId: string, stockItemId: string, user: JwtPayload) {
+    await this.findProductOrThrow(pizzeriaId, productId);
+
+    const item = await this.prisma.db.productRecipe.findUnique({
+      where: { productId_stockItemId: { productId, stockItemId } },
+    });
+    if (!item) throw new NotFoundException('Ingrediente não encontrado na receita deste produto');
+
+    await this.prisma.db.productRecipe.delete({
+      where: { productId_stockItemId: { productId, stockItemId } },
+    });
+
+    await this.audit.log({
+      pizzeriaId, userId: user.sub, action: 'RECIPE_ITEM_REMOVED',
+      entity: 'ProductRecipe', entityId: item.id,
+      before: { productId, stockItemId, quantity: Number(item.quantity) } as Record<string, unknown>,
+    });
+
+    return { message: 'Ingrediente removido da receita' };
   }
 
 }

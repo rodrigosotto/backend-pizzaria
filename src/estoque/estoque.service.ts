@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -57,6 +58,14 @@ export class EstoqueService {
   }
 
   async createSupplier(pizzeriaId: string, dto: CreateSupplierDto, userId: string) {
+    if (dto.cnpj) {
+      const existing = await this.prisma.db.supplier.findFirst({
+        where: { pizzeriaId, cnpj: dto.cnpj },
+        select: { id: true },
+      });
+      if (existing) throw new ConflictException('Já existe um fornecedor cadastrado com este CNPJ');
+    }
+
     const supplier = await this.prisma.db.supplier.create({
       data: {
         pizzeriaId,
@@ -83,6 +92,14 @@ export class EstoqueService {
   async updateSupplier(pizzeriaId: string, id: string, dto: UpdateSupplierDto, userId: string) {
     const supplier = await this.prisma.db.supplier.findFirst({ where: { id, pizzeriaId } });
     if (!supplier) throw new NotFoundException('Fornecedor não encontrado');
+
+    if (dto.cnpj && dto.cnpj !== supplier.cnpj) {
+      const existing = await this.prisma.db.supplier.findFirst({
+        where: { pizzeriaId, cnpj: dto.cnpj, id: { not: id } },
+        select: { id: true },
+      });
+      if (existing) throw new ConflictException('Já existe um fornecedor cadastrado com este CNPJ');
+    }
 
     const updated = await this.prisma.db.supplier.update({
       where: { id },
