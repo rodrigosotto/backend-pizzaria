@@ -44,7 +44,44 @@ export class PizzeriaService {
     private readonly storage: SupabaseStorageService,
   ) {}
 
+  //id usuario autenticado no jwt, ao cadastrar a pizzaria é vinculado ao usuario,
+  // //apenas o dono pode editar ou excluir a pizzaria,
+  // o dono pode convidar outros usuarios para colaborar na pizzaria com diferentes
+  // roles (admin, atendente, cozinha), os colaboradores
+  // podem ser removidos ou ter seus roles alterados pelo dono,
+  // a pizzaria tem um status (active, inactive) e apenas as pizzarias
+  // ativas são listadas para o usuario, ao excluir a pizzaria ela é apenas desativada
+  // (status = inactive) para manter o histórico de dados relacionados,
+  //  a pizzaria tem um logo que pode ser enviado e armazenado
+  //  usando o Supabase Storage, as informações de endereço são armazenadas
+  // como JSON para flexibilidade, todas as ações relevantes são auditadas usando o AuditService.
   async create(dto: CreatePizzeriaDto, user: JwtPayload) {
+    if (dto.cnpj) {
+      const existing = await this.prisma.db.pizzeria.findUnique({
+        where: { cnpj: dto.cnpj },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'Já existe uma pizzaria cadastrada com este CNPJ',
+        );
+      }
+    }
+
+    const nameExists = await this.prisma.db.pizzeria.findFirst({
+      where: {
+        ownerId: user.sub,
+        tradeName: dto.tradeName,
+        status: { not: 'inactive' },
+      },
+      select: { id: true },
+    });
+    if (nameExists) {
+      throw new ConflictException(
+        'Você já possui uma pizzaria cadastrada com este nome',
+      );
+    }
+
     const pizzeria = await this.prisma.db.$transaction(async (tx) => {
       const created = await tx.pizzeria.create({
         data: {
@@ -150,7 +187,9 @@ export class PizzeriaService {
 
     if (!pizzeria) throw new NotFoundException('Pizzaria não encontrada');
     if (pizzeria.ownerId !== user.sub) {
-      throw new ForbiddenException('Apenas o proprietário pode excluir a pizzaria');
+      throw new ForbiddenException(
+        'Apenas o proprietário pode excluir a pizzaria',
+      );
     }
 
     await this.prisma.db.pizzeria.update({
@@ -231,14 +270,17 @@ export class PizzeriaService {
       select: { id: true, name: true, email: true },
     });
 
-    if (!target) throw new NotFoundException('Usuário não encontrado com este e-mail');
+    if (!target)
+      throw new NotFoundException('Usuário não encontrado com este e-mail');
 
     const existing = await this.prisma.db.userPizzeriaRole.findUnique({
       where: { userId_pizzeriaId: { userId: target.id, pizzeriaId } },
     });
 
     if (existing?.isActive) {
-      throw new ConflictException('Este usuário já tem um vínculo ativo nesta pizzaria');
+      throw new ConflictException(
+        'Este usuário já tem um vínculo ativo nesta pizzaria',
+      );
     }
 
     const role = await this.prisma.db.userPizzeriaRole.upsert({
@@ -258,7 +300,10 @@ export class PizzeriaService {
       entityId: role.id,
       userId: user.sub,
       pizzeriaId,
-      after: { targetUserId: target.id, role: dto.role } as Record<string, unknown>,
+      after: { targetUserId: target.id, role: dto.role } as Record<
+        string,
+        unknown
+      >,
     });
 
     return role;
@@ -280,7 +325,8 @@ export class PizzeriaService {
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
     });
 
-    if (!link || !link.isActive) throw new NotFoundException('Vínculo não encontrado');
+    if (!link || !link.isActive)
+      throw new NotFoundException('Vínculo não encontrado');
 
     const before = { role: link.role };
 
@@ -318,7 +364,8 @@ export class PizzeriaService {
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
     });
 
-    if (!link || !link.isActive) throw new NotFoundException('Vínculo não encontrado');
+    if (!link || !link.isActive)
+      throw new NotFoundException('Vínculo não encontrado');
 
     await this.prisma.db.userPizzeriaRole.update({
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
@@ -337,7 +384,10 @@ export class PizzeriaService {
     return { message: 'Vínculo removido com sucesso' };
   }
 
-  private async assertAccess(pizzeriaId: string, userId: string): Promise<void> {
+  private async assertAccess(
+    pizzeriaId: string,
+    userId: string,
+  ): Promise<void> {
     const link = await this.prisma.db.userPizzeriaRole.findUnique({
       where: { userId_pizzeriaId: { userId, pizzeriaId } },
       select: { isActive: true },

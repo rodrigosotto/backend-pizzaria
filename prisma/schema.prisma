@@ -141,7 +141,7 @@ model Pizzeria {
   ownerId     String         @map("owner_id")
   tradeName   String         @map("trade_name") @db.VarChar(100)
   companyName String?        @map("company_name") @db.VarChar(150)
-  cnpj        String?        @db.VarChar(18)
+  cnpj        String?        @unique @db.VarChar(18)
   phone       String         @db.VarChar(20)
   email       String?        @db.VarChar(150)
   logoUrl     String?        @map("logo_url")
