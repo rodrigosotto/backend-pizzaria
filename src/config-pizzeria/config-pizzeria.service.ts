@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
@@ -11,16 +11,29 @@ export class ConfigPizzeriaService {
     private readonly audit: AuditService,
   ) {}
 
+  private get defaultConfig() {
+    return {
+      acceptingOrders: true,
+      estimatedDelivery: 45,
+      estimatedPickup: 20,
+      serviceFeePct: new Prisma.Decimal(10),
+      serviceFeeAppliesTo: 'all',
+      minDeliveryOrder: null,
+      freeDeliveryAbove: null,
+      pizzaPricingRule: 'most_expensive',
+      paymentMethods: ['cash', 'pix', 'credit', 'debit'] as Prisma.InputJsonValue,
+      businessHours: {} as Prisma.InputJsonValue,
+      autoMessages: Prisma.DbNull,
+    };
+  }
+
   async getConfig(pizzeriaId: string) {
-    const config = await this.prisma.db.pizzeriaConfig.findUnique({
+    // Se ainda não existe, cria com valores padrão (idempotente para novas pizzarias)
+    return this.prisma.db.pizzeriaConfig.upsert({
       where: { pizzeriaId },
+      update: {},
+      create: { pizzeriaId, ...this.defaultConfig },
     });
-
-    if (!config) {
-      throw new NotFoundException('Configuração não encontrada para esta pizzaria');
-    }
-
-    return config;
   }
 
   async updateConfig(
@@ -28,13 +41,8 @@ export class ConfigPizzeriaService {
     dto: UpdatePizzeriaConfigDto,
     userId: string,
   ) {
-    const existing = await this.prisma.db.pizzeriaConfig.findUnique({
-      where: { pizzeriaId },
-    });
-
-    if (!existing) {
-      throw new NotFoundException('Configuração não encontrada para esta pizzaria');
-    }
+    // Garante que o registro existe antes de atualizar
+    const existing = await this.getConfig(pizzeriaId);
 
     const updated = await this.prisma.db.pizzeriaConfig.update({
       where: { pizzeriaId },
