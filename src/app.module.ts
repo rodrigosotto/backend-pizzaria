@@ -21,6 +21,7 @@ import { ConfigPizzeriaModule } from './config-pizzeria/config-pizzeria.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { DeliverersModule } from './deliverers/deliverers.module';
+import { DeliveryZonesModule } from './delivery-zones/delivery-zones.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { DeliverersModule } from './deliverers/deliverers.module';
     CouponsModule,
     LoyaltyModule,
     DeliverersModule,
+    DeliveryZonesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

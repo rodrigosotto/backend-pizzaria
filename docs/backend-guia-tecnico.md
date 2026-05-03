@@ -1510,6 +1510,7 @@ As fases seguintes vão implementar:
 | ~~**12**~~ | ~~CouponsModule~~ ✅ Implementado |
 | ~~**13**~~ | ~~LoyaltyModule~~ ✅ Implementado |
 | ~~**14**~~ | ~~DeliverersModule~~ ✅ Implementado |
+| ~~**15**~~ | ~~DeliveryZonesModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
 - , , , , , //
@@ -1751,4 +1752,43 @@ Atualiza campos opcionais. O campo `isActive` pode ser usado para reativar um en
 #### DELETE /deliverers/:id
 
 Soft delete: seta `isActive = false`. Retorna `204 No Content`. Gera auditoria.
+
+
+---
+
+### DeliveryZonesModule (`src/delivery-zones/`)
+
+Módulo de zonas de entrega da pizzaria. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/delivery-zones/delivery-zones.module.ts`
+**Controller:** `src/delivery-zones/delivery-zones.controller.ts`
+**Service:** `src/delivery-zones/delivery-zones.service.ts`
+**DTOs:** `create-delivery-zone.dto.ts`, `update-delivery-zone.dto.ts`
+
+#### GET /delivery-zones
+
+Lista zonas ordenadas por nome. Parâmetro opcional `?active=true` para filtrar apenas ativas.
+
+#### GET /delivery-zones/:id
+
+Busca uma zona por ID. Retorna `404` se não encontrada ou pertencer a outra pizzaria.
+
+#### POST /delivery-zones
+
+Cria uma zona de entrega. Retorna `400` se `type = radius` e `radiusKm` não for informado.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `type` | `neighborhood` \| `radius` | ✅ | Tipo da zona |
+| `name` | string | ✅ | Nome da zona (ex: "Batel" ou "Até 3km") |
+| `fee` | number | ✅ | Taxa de entrega em R$ |
+| `radiusKm` | number | Condicional | Obrigatório quando `type = radius` |
+
+#### PATCH /delivery-zones/:id
+
+Atualiza campos opcionais. O campo `isActive` pode reativar uma zona desativada. Gera auditoria.
+
+#### DELETE /delivery-zones/:id
+
+Hard delete. Retorna `204 No Content`. Gera auditoria.
 
