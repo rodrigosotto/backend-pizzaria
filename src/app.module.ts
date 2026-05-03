@@ -17,6 +17,8 @@ import { EstoqueModule } from './estoque/estoque.module';
 import { CaixaModule } from './caixa/caixa.module';
 import { ChatModule } from './chat/chat.module';
 import { ReportsModule } from './reports/reports.module';
+import { ConfigPizzeriaModule } from './config-pizzeria/config-pizzeria.module';
+import { CouponsModule } from './coupons/coupons.module';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { ReportsModule } from './reports/reports.module';
     CaixaModule,
     ChatModule,
     ReportsModule,
+    ConfigPizzeriaModule,
+    CouponsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
