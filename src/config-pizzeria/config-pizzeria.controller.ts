@@ -1,5 +1,12 @@
+/* This TypeScript class represents a controller for managing configuration
+settings of a pizzeria in a NestJS application. */
 import { Body, Controller, Get, Patch } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../modules/auth/decorators/roles.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
@@ -14,6 +21,8 @@ import { UpdatePizzeriaConfigDto } from './dto/update-pizzeria-config.dto';
 @RequiresPizzeria()
 @Roles(UserRole.owner, UserRole.admin)
 @Controller('config')
+/* This TypeScript class `ConfigPizzeriaController` handles retrieving and updating
+configurations for a pizzeria. */
 export class ConfigPizzeriaController {
   constructor(private readonly configService: ConfigPizzeriaService) {}
 

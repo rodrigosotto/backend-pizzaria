@@ -26,7 +26,9 @@ export class UpdatePizzeriaConfigDto {
   @Min(0)
   estimatedPickup?: number;
 
-  @ApiPropertyOptional({ description: 'Percentual de taxa de serviço (ex: 10 = 10%)' })
+  @ApiPropertyOptional({
+    description: 'Percentual de taxa de serviço (ex: 10 = 10%)',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -74,7 +76,9 @@ export class UpdatePizzeriaConfigDto {
   @IsOptional()
   businessHours?: Record<string, unknown>;
 
-  @ApiPropertyOptional({ description: 'Mensagens automáticas para status de pedido' })
+  @ApiPropertyOptional({
+    description: 'Mensagens automáticas para status de pedido',
+  })
   @IsOptional()
   autoMessages?: Record<string, unknown>;
 }
