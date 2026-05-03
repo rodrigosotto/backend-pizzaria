@@ -1512,6 +1512,7 @@ As fases seguintes vão implementar:
 | ~~**14**~~ | ~~DeliverersModule~~ ✅ Implementado |
 | ~~**15**~~ | ~~DeliveryZonesModule~~ ✅ Implementado |
 | ~~**16**~~ | ~~PrintersModule~~ ✅ Implementado |
+| ~~**17**~~ | ~~TablesModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
 - , , , , , //
@@ -1831,4 +1832,133 @@ Atualiza campos opcionais. O campo `isActive` pode reativar uma impressora desat
 #### DELETE /printers/:id
 
 Hard delete. Retorna `204 No Content`. Gera auditoria.
+
+
+---
+
+### TablesModule (`src/tables/`)
+
+Módulo de mesas, sessões de atendimento e reservas. Concentra os três modelos (`Table`, `TableSession`, `TableReservation`) em um único controller/service por serem fortemente acoplados.
+
+**Arquivo:** `src/tables/tables.module.ts`
+**Controller:** `src/tables/tables.controller.ts`
+**Service:** `src/tables/tables.service.ts`
+**DTOs:** `create-table.dto.ts`, `update-table.dto.ts`, `open-session.dto.ts`, `create-reservation.dto.ts`
+
+---
+
+#### GET /tables
+
+Roles: `owner`, `admin`, `atendente`, `caixa`, `cozinha`
+
+Lista mesas ordenadas por número. Parâmetro opcional `?status=free|occupied|reserved`.
+
+Inclui a sessão ativa (`sessions[0]`) de cada mesa quando existir.
+
+---
+
+#### GET /tables/:id
+
+Roles: `owner`, `admin`, `atendente`, `caixa`, `cozinha`
+
+Busca uma mesa por ID com a sessão ativa e os pedidos da sessão (exceto cancelados).
+
+---
+
+#### POST /tables
+
+Roles: `owner`, `admin`
+
+Cria uma mesa. O `qrCodeToken` é gerado automaticamente (16 bytes hex) se não for informado. Retorna `409` se o número já existir na pizzaria.
+
+| Campo | Tipo | Obrigatório |
+|---|---|---|
+| `number` | int | ✅ |
+| `capacity` | int | ✅ |
+| `qrCodeToken` | string | ❌ (auto-gerado) |
+
+---
+
+#### PATCH /tables/:id
+
+Roles: `owner`, `admin`
+
+Atualiza número, capacidade ou status manualmente. Gera auditoria.
+
+---
+
+#### DELETE /tables/:id
+
+Roles: `owner`, `admin`
+
+Hard delete. Retorna `400` se a mesa não estiver `free` ou tiver sessão ativa. Retorna `204 No Content`.
+
+---
+
+#### POST /tables/:tableId/sessions
+
+Roles: `owner`, `admin`, `atendente`
+
+Abre uma sessão de atendimento na mesa. **Atomicamente** cria a `TableSession` e muda o status da mesa para `occupied` (transação Prisma). Retorna `400` se a mesa já estiver ocupada.
+
+| Campo | Tipo | Obrigatório |
+|---|---|---|
+| `customerName` | string | ❌ |
+| `customerPhone` | string | ❌ |
+| `customerCpf` | string | ❌ |
+
+---
+
+#### GET /tables/:tableId/sessions/current
+
+Roles: `owner`, `admin`, `atendente`, `caixa`, `cozinha`
+
+Retorna a sessão ativa da mesa com todos os pedidos não cancelados e seus itens. Retorna `404` se não houver sessão ativa.
+
+---
+
+#### PATCH /tables/:tableId/sessions/:sessionId/close
+
+Roles: `owner`, `admin`, `atendente`, `caixa`
+
+Fecha a sessão de atendimento. **Atomicamente** seta `closedAt = now()` e muda o status da mesa para `free` (transação Prisma). Retorna `404` se a sessão não for encontrada ou já estiver fechada.
+
+---
+
+#### GET /tables/reservations
+
+Roles: `owner`, `admin`, `atendente`
+
+Lista reservas ordenadas por `reservedAt asc`. Filtros opcionais: `?tableId=`, `?dateFrom=`, `?dateTo=` (ISO 8601).
+
+Inclui o número e a capacidade da mesa em cada reserva.
+
+---
+
+#### POST /tables/reservations
+
+Roles: `owner`, `admin`, `atendente`
+
+Cria uma reserva. Retorna `400` se a mesa estiver ocupada no momento.
+
+| Campo | Tipo | Obrigatório |
+|---|---|---|
+| `tableId` | UUID | ✅ |
+| `customerName` | string | ✅ |
+| `customerPhone` | string | ✅ |
+| `reservedAt` | ISO 8601 | ✅ |
+| `notes` | string | ❌ |
+
+---
+
+#### DELETE /tables/reservations/:id
+
+Roles: `owner`, `admin`, `atendente`
+
+Cancela (hard delete) uma reserva. Retorna `204 No Content`. Gera auditoria.
+
+> **Decisões de design:**
+> - Abrir/fechar sessão usa `$transaction` para garantir consistência entre `TableSession` e `Table.status`.
+> - A rota `GET /tables/reservations` foi posicionada **antes** de `GET /tables/:id` para evitar que o Express/Fastify interprete `reservations` como um UUID de mesa.
+> - Reservas não alteram o status da mesa automaticamente — o atendente confirma a chegada abrindo a sessão.
 

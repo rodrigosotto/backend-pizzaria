@@ -23,6 +23,7 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
 import { DeliverersModule } from './deliverers/deliverers.module';
 import { DeliveryZonesModule } from './delivery-zones/delivery-zones.module';
 import { PrintersModule } from './printers/printers.module';
+import { TablesModule } from './tables/tables.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { PrintersModule } from './printers/printers.module';
     DeliverersModule,
     DeliveryZonesModule,
     PrintersModule,
+    TablesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
