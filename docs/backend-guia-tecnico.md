@@ -1508,6 +1508,7 @@ As fases seguintes vão implementar:
 | ~~**10**~~ | ~~ReportsModule~~ ✅ Implementado |
 | ~~**11**~~ | ~~ConfigPizzeriaModule~~ ✅ Implementado |
 | ~~**12**~~ | ~~CouponsModule~~ ✅ Implementado |
+| ~~**13**~~ | ~~LoyaltyModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
 - , , , , , //
@@ -1665,4 +1666,46 @@ Validações em ordem:
 5. Se `cpf` informado: `maxUsesPerCpf` não atingido para o cliente
 
 Retorna: `{ couponId, code, discountType, discountValue, discount, finalTotal }`
+
+
+---
+
+### LoyaltyModule (`src/loyalty/`)
+
+Módulo de programas de fidelidade por selos. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/loyalty/loyalty.module.ts`
+**Controller:** `src/loyalty/loyalty.controller.ts`
+**Service:** `src/loyalty/loyalty.service.ts`
+**DTOs:** `create-loyalty.dto.ts`, `update-loyalty.dto.ts`
+
+#### GET /loyalty
+
+Lista todos os programas de fidelidade da pizzaria (ordenados por `createdAt desc`).
+
+#### GET /loyalty/:id
+
+Busca um programa por ID. Retorna `404` se não encontrado ou pertencer a outra pizzaria.
+
+#### POST /loyalty
+
+Cria um programa de fidelidade. Retorna `409` se já existir um programa com o mesmo nome.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `name` | string | ✅ | Nome do programa (único por pizzaria) |
+| `stampsGoal` | int | ✅ | Selos necessários para resgatar a recompensa |
+| `reward` | string | ✅ | Descrição da recompensa |
+| `validityDays` | int | ❌ | Validade dos selos em dias (null = sem validade) |
+| `isActive` | boolean | ❌ | Ativo por padrão |
+
+#### PATCH /loyalty/:id
+
+Atualiza campos opcionais do programa. Verifica duplicidade de nome. Gera auditoria.
+
+#### DELETE /loyalty/:id
+
+Remove o programa permanentemente (hard delete). Retorna `204 No Content`. Gera auditoria.
+
+> **Nota:** Os selos dos clientes ficam em `Customer.loyaltyStamps`. O módulo de fidelidade define a meta e a recompensa — o controle de quantos selos cada cliente tem é gerenciado pelo `CustomersModule` (`PATCH /customers/:id` com `loyaltyStamps`).
 
