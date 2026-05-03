@@ -246,6 +246,9 @@ export class OrdersService {
     if (dto.type === OrderType.table && !dto.tableId) {
       throw new BadRequestException('Mesa obrigatória para pedido tipo mesa');
     }
+    if (dto.couponCode && !dto.customerId) {
+      throw new BadRequestException('Informe o cliente (customerId) para aplicar um cupom');
+    }
 
     // Carregar configuração da pizzaria (RN02, RN07, RN10)
     const config = await this.prisma.db.pizzeriaConfig.findUnique({
@@ -280,6 +283,23 @@ export class OrdersService {
       if (customer.isBlacklisted) {
         throw new BadRequestException('Cliente está na lista negra e não pode fazer pedidos');
       }
+    }
+
+    // Validar delivererId pertence à pizzaria
+    if (dto.delivererId) {
+      const deliverer = await this.prisma.db.deliverer.findFirst({
+        where: { id: dto.delivererId, pizzeriaId, isActive: true },
+      });
+      if (!deliverer) throw new NotFoundException('Entregador não encontrado ou inativo nesta pizzaria');
+    }
+
+    // Validar tableSessionId pertence a uma mesa desta pizzaria
+    if (dto.tableSessionId) {
+      const session = await this.prisma.db.tableSession.findFirst({
+        where: { id: dto.tableSessionId, table: { pizzeriaId } },
+      });
+      if (!session) throw new NotFoundException('Sessão de mesa não encontrada nesta pizzaria');
+      if (session.closedAt) throw new BadRequestException('Sessão de mesa já encerrada');
     }
 
     const resolvedItems = await this.resolveItems(pizzeriaId, dto.items);

@@ -1,6 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -89,5 +92,38 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'Usuário não encontrado.', type: ApiErrorResponse })
   deactivate(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.usersService.deactivate(id, user.sub);
+  }
+
+  // ── Upload Avatar ───────────────────────────────────────────────────────────
+
+  @Post(':id/avatar')
+  @ApiOperation({
+    summary: 'Upload de avatar do usuário',
+    description: 'Faz upload de uma imagem para o Supabase Storage e atualiza `avatarUrl`. ' +
+      'O próprio usuário pode alterar seu avatar; owner/admin podem alterar o de qualquer usuário. ' +
+      'Formatos aceitos: JPEG, PNG, WebP, GIF. Tamanho máximo: 5MB.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiParam({ name: 'id', description: 'UUID do usuário' })
+  @ApiResponse({ status: 200, description: 'Avatar atualizado com sucesso.', type: UserDto })
+  @ApiResponse({ status: 400, description: 'Arquivo ausente ou tipo inválido.' })
+  @ApiResponse({ status: 403, description: 'Sem permissão para alterar este avatar.' })
+  @ApiResponse({ status: 404, description: 'Usuário não encontrado.' })
+  async uploadAvatar(
+    @Param('id') id: string,
+    @Req() req: FastifyRequest,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await req.file();
+    if (!data) throw new BadRequestException('Nenhum arquivo enviado');
+
+    const buffer = await data.toBuffer();
+    return this.usersService.uploadAvatar(id, buffer, data.mimetype, user.sub, user.role);
   }
 }
