@@ -72,6 +72,25 @@ export class OrdersController {
     return this.ordersService.create(pizzeriaId, dto, user.sub);
   }
 
+  // ── My deliveries ──────────────────────────────────────────────────────────
+
+  @Get('my-deliveries')
+  @Roles(UserRole.entregador, UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Minhas entregas',
+    description:
+      'Retorna os pedidos ativos (ready/delivering) e os concluídos hoje do entregador logado. ' +
+      'O entregador deve ter um registro na tabela `deliverers` com `userId` igual ao `sub` do JWT.',
+  })
+  @ApiResponse({ status: 200, description: 'Entregas ativas e histórico do dia' })
+  @ApiResponse({ status: 404, description: 'Entregador não vinculado a este usuário' })
+  findMyDeliveries(
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ordersService.findMyDeliveries(pizzeriaId, user.sub);
+  }
+
   @Get()
   @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
   @ApiOperation({

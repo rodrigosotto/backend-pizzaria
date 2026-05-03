@@ -845,4 +845,66 @@ export class OrdersService {
 
     return updated;
   }
+
+  // -------------------------------------------------------------------------
+  // My deliveries — pedidos atribuídos ao entregador logado
+  // -------------------------------------------------------------------------
+
+  async findMyDeliveries(pizzeriaId: string, userId: string) {
+    // Localiza o Deliverer vinculado a este usuário da plataforma
+    const deliverer = await this.prisma.db.deliverer.findFirst({
+      where: { pizzeriaId, userId, isActive: true },
+    });
+
+    if (!deliverer) {
+      throw new NotFoundException(
+        'Nenhum entregador ativo vinculado a este usuário nesta pizzaria',
+      );
+    }
+
+    const [active, recent] = await this.prisma.db.$transaction([
+      // Pedidos aguardando retirada ou em rota
+      this.prisma.db.order.findMany({
+        where: {
+          pizzeriaId,
+          delivererId: deliverer.id,
+          status: { in: [OrderStatus.ready, OrderStatus.delivering] },
+        },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          deliveryAddress: true,
+          items: {
+            include: {
+              product: { select: { id: true, name: true } },
+              productSize: { select: { id: true, sizeLabel: true } },
+            },
+          },
+        },
+      }),
+      // Últimas 20 entregas concluídas hoje
+      this.prisma.db.order.findMany({
+        where: {
+          pizzeriaId,
+          delivererId: deliverer.id,
+          status: OrderStatus.done,
+          deliveredAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+        orderBy: { deliveredAt: 'desc' },
+        take: 20,
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          deliveryAddress: true,
+          items: {
+            include: {
+              product: { select: { id: true, name: true } },
+              productSize: { select: { id: true, sizeLabel: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    return { deliverer, active, recent };
+  }
 }
