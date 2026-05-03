@@ -1509,6 +1509,8 @@ As fases seguintes vão implementar:
 | ~~**11**~~ | ~~ConfigPizzeriaModule~~ ✅ Implementado |
 | ~~**12**~~ | ~~CouponsModule~~ ✅ Implementado |
 | ~~**13**~~ | ~~LoyaltyModule~~ ✅ Implementado |
+| ~~**14**~~ | ~~DeliverersModule~~ ✅ Implementado |
+| ~~**15**~~ | ~~DeliveryZonesModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
 - , , , , , //
@@ -1708,4 +1710,85 @@ Atualiza campos opcionais do programa. Verifica duplicidade de nome. Gera audito
 Remove o programa permanentemente (hard delete). Retorna `204 No Content`. Gera auditoria.
 
 > **Nota:** Os selos dos clientes ficam em `Customer.loyaltyStamps`. O módulo de fidelidade define a meta e a recompensa — o controle de quantos selos cada cliente tem é gerenciado pelo `CustomersModule` (`PATCH /customers/:id` com `loyaltyStamps`).
+
+
+---
+
+### DeliverersModule (`src/deliverers/`)
+
+Módulo de entregadores vinculados à pizzaria. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/deliverers/deliverers.module.ts`
+**Controller:** `src/deliverers/deliverers.controller.ts`
+**Service:** `src/deliverers/deliverers.service.ts`
+**DTOs:** `create-deliverer.dto.ts`, `update-deliverer.dto.ts`
+
+#### GET /deliverers
+
+Lista entregadores ordenados por nome. Parâmetro opcional `?active=true` para filtrar apenas ativos.
+
+#### GET /deliverers/:id
+
+Busca um entregador por ID. Retorna `404` se não encontrado ou pertencer a outra pizzaria.
+
+#### POST /deliverers
+
+Cadastra um novo entregador.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `name` | string | ✅ | Nome do entregador |
+| `phone` | string | ✅ | Telefone |
+| `cpf` | string | ❌ | CPF |
+| `vehicle` | string | ❌ | Descrição do veículo |
+| `plate` | string | ❌ | Placa do veículo |
+| `pixKey` | string | ❌ | Chave PIX para repasse |
+| `userId` | string | ❌ | ID do usuário da plataforma vinculado |
+
+#### PATCH /deliverers/:id
+
+Atualiza campos opcionais. O campo `isActive` pode ser usado para reativar um entregador desativado. Gera auditoria.
+
+#### DELETE /deliverers/:id
+
+Soft delete: seta `isActive = false`. Retorna `204 No Content`. Gera auditoria.
+
+
+---
+
+### DeliveryZonesModule (`src/delivery-zones/`)
+
+Módulo de zonas de entrega da pizzaria. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/delivery-zones/delivery-zones.module.ts`
+**Controller:** `src/delivery-zones/delivery-zones.controller.ts`
+**Service:** `src/delivery-zones/delivery-zones.service.ts`
+**DTOs:** `create-delivery-zone.dto.ts`, `update-delivery-zone.dto.ts`
+
+#### GET /delivery-zones
+
+Lista zonas ordenadas por nome. Parâmetro opcional `?active=true` para filtrar apenas ativas.
+
+#### GET /delivery-zones/:id
+
+Busca uma zona por ID. Retorna `404` se não encontrada ou pertencer a outra pizzaria.
+
+#### POST /delivery-zones
+
+Cria uma zona de entrega. Retorna `400` se `type = radius` e `radiusKm` não for informado.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `type` | `neighborhood` \| `radius` | ✅ | Tipo da zona |
+| `name` | string | ✅ | Nome da zona (ex: "Batel" ou "Até 3km") |
+| `fee` | number | ✅ | Taxa de entrega em R$ |
+| `radiusKm` | number | Condicional | Obrigatório quando `type = radius` |
+
+#### PATCH /delivery-zones/:id
+
+Atualiza campos opcionais. O campo `isActive` pode reativar uma zona desativada. Gera auditoria.
+
+#### DELETE /delivery-zones/:id
+
+Hard delete. Retorna `204 No Content`. Gera auditoria.
 
