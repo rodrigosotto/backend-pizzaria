@@ -1511,6 +1511,7 @@ As fases seguintes vão implementar:
 | ~~**13**~~ | ~~LoyaltyModule~~ ✅ Implementado |
 | ~~**14**~~ | ~~DeliverersModule~~ ✅ Implementado |
 | ~~**15**~~ | ~~DeliveryZonesModule~~ ✅ Implementado |
+| ~~**16**~~ | ~~PrintersModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
 - , , , , , //
@@ -1789,6 +1790,45 @@ Cria uma zona de entrega. Retorna `400` se `type = radius` e `radiusKm` não for
 Atualiza campos opcionais. O campo `isActive` pode reativar uma zona desativada. Gera auditoria.
 
 #### DELETE /delivery-zones/:id
+
+Hard delete. Retorna `204 No Content`. Gera auditoria.
+
+
+---
+
+### PrintersModule (`src/printers/`)
+
+Módulo de impressoras térmicas da pizzaria. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/printers/printers.module.ts`
+**Controller:** `src/printers/printers.controller.ts`
+**Service:** `src/printers/printers.service.ts`
+**DTOs:** `create-printer.dto.ts`, `update-printer.dto.ts`
+
+#### GET /printers
+
+Lista impressoras ordenadas por nome. Parâmetro opcional `?active=true` para filtrar apenas ativas.
+
+#### GET /printers/:id
+
+Busca uma impressora por ID. Retorna `404` se não encontrada ou pertencer a outra pizzaria.
+
+#### POST /printers
+
+Cadastra uma nova impressora.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `name` | string | ✅ | Nome da impressora |
+| `ip` | string | ✅ | Endereço IP |
+| `sector` | `kitchen` \| `cashier` \| `bar` | ✅ | Setor de destino das impressões |
+| `model` | string | ❌ | Modelo do equipamento |
+
+#### PATCH /printers/:id
+
+Atualiza campos opcionais. O campo `isActive` pode reativar uma impressora desativada. Gera auditoria.
+
+#### DELETE /printers/:id
 
 Hard delete. Retorna `204 No Content`. Gera auditoria.
 
