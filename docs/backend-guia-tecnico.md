@@ -1506,9 +1506,12 @@ As fases seguintes vão implementar:
 | ~~**8**~~ | ~~CaixaModule~~ ✅ Implementado |
 | ~~**9**~~ | ~~ChatModule~~ ✅ Implementado |
 | ~~**10**~~ | ~~ReportsModule~~ ✅ Implementado |
+| ~~**11**~~ | ~~ConfigPizzeriaModule~~ ✅ Implementado |
+| ~~**12**~~ | ~~CouponsModule~~ ✅ Implementado |
+| ~~**13**~~ | ~~LoyaltyModule~~ ✅ Implementado |
 
 **O que está no schema mas sem endpoints ainda:**
-- Todas as 28 tabelas além de `users` e `audit_logs`
+- , , , , , //
 - O campo `X-Pizzeria-Id` é validado pelo `PizzeriaContextGuard` em todos os endpoints com `@RequiresPizzeria()` (Fases 4, 5 em diante)
 
 **Refresh token:**
@@ -1539,3 +1542,170 @@ Abra o `tsconfig.json` e verifique se `"ignoreDeprecations"` está como `"5.0"` 
 
 **Se o servidor não conectar ao banco:**
 Verifique se `npm run prisma:dev` está rodando em outro terminal. Sem o proxy na porta 51213, nenhuma query funciona.
+
+---
+
+### ConfigPizzeriaModule (`src/config-pizzeria/`)
+
+Módulo de configurações operacionais da pizzaria. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/config-pizzeria/config-pizzeria.module.ts`
+**Controller:** `src/config-pizzeria/config-pizzeria.controller.ts`
+**Service:** `src/config-pizzeria/config-pizzeria.service.ts`
+**DTO:** `src/config-pizzeria/dto/update-pizzeria-config.dto.ts`
+
+#### GET /config
+
+Roles: `owner`, `admin`
+
+Retorna as configurações operacionais da pizzaria ativa (`PizzeriaConfig`).
+
+Campos retornados: `acceptingOrders`, `estimatedDelivery`, `estimatedPickup`, `serviceFeePct`, `serviceFeeAppliesTo`, `minDeliveryOrder`, `freeDeliveryAbove`, `pizzaPricingRule`, `paymentMethods`, `businessHours`, `autoMessages`, `updatedAt`.
+
+---
+
+#### PATCH /config
+
+Roles: `owner`, `admin`
+
+Atualiza campos específicos da configuração (todos opcionais):
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `acceptingOrders` | boolean | Liga/desliga recebimento de pedidos |
+| `estimatedDelivery` | int | Tempo estimado de entrega (minutos) |
+| `estimatedPickup` | int | Tempo estimado de retirada (minutos) |
+| `serviceFeePct` | number | Percentual da taxa de serviço (ex: 10 = 10%) |
+| `serviceFeeAppliesTo` | string | `"all"` / `"delivery"` / `"table"` / `"none"` |
+| `minDeliveryOrder` | number | Valor mínimo para pedido de entrega |
+| `freeDeliveryAbove` | number | Valor para frete grátis |
+| `pizzaPricingRule` | string | `"most_expensive"` / `"average"` |
+| `paymentMethods` | string[] | Ex: `["cash","pix","credit","debit"]` |
+| `businessHours` | object | Chaves `"0"`–`"6"` (domingo–sábado), cada uma `{ open, close }` ou `null` |
+| `autoMessages` | object | Mensagens automáticas por status de pedido |
+
+Gera entrada de auditoria com `action: UPDATE, entity: PizzeriaConfig`.
+
+
+---
+
+### CouponsModule (`src/coupons/`)
+
+Módulo de cupons de desconto. Todos os endpoints exigem `X-Pizzeria-Id`.
+
+**Arquivo:** `src/coupons/coupons.module.ts`
+**Controller:** `src/coupons/coupons.controller.ts`
+**Service:** `src/coupons/coupons.service.ts`
+**DTOs:** `create-coupon.dto.ts`, `update-coupon.dto.ts`, `validate-coupon.dto.ts`
+
+#### GET /coupons
+
+Roles: `owner`, `admin`
+
+Lista cupons da pizzaria. Parâmetro opcional `?active=true|false` para filtrar por status.
+
+Inclui `_count.usages` (total de usos) em cada cupom.
+
+---
+
+#### GET /coupons/:id
+
+Roles: `owner`, `admin`
+
+Busca um cupom por ID com total de usos.
+
+---
+
+#### POST /coupons
+
+Roles: `owner`, `admin`
+
+Cria um cupom. O `code` é sempre armazenado em maiúsculas. Retorna `409` se o código já existir na pizzaria.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `code` | string | ✅ | Código do cupom (único por pizzaria) |
+| `discountType` | `percentage` \| `fixed` | ✅ | Tipo do desconto |
+| `discountValue` | number | ✅ | Valor do desconto |
+| `minOrderValue` | number | ❌ | Valor mínimo do pedido |
+| `maxUsesTotal` | int | ❌ | Limite total de usos |
+| `maxUsesPerCpf` | int | ❌ | Limite de usos por CPF |
+| `expiresAt` | ISO 8601 | ❌ | Data de expiração |
+
+---
+
+#### PATCH /coupons/:id
+
+Roles: `owner`, `admin`
+
+Atualiza campos opcionais (incluindo `isActive` para reativar). Gera auditoria.
+
+---
+
+#### DELETE /coupons/:id
+
+Roles: `owner`, `admin`
+
+Soft delete: seta `isActive = false`. Retorna `204 No Content`. Gera auditoria.
+
+---
+
+#### POST /coupons/validate
+
+Roles: `owner`, `admin`, `atendente`, `caixa`
+
+Valida um cupom e calcula o desconto. Usado pelo frontend antes de finalizar pedido.
+
+Body: `{ code, orderTotal, cpf? }`
+
+Validações em ordem:
+1. Cupom existe e `isActive = true`
+2. `expiresAt` não ultrapassou
+3. `maxUsesTotal` não esgotado
+4. `orderTotal >= minOrderValue`
+5. Se `cpf` informado: `maxUsesPerCpf` não atingido para o cliente
+
+Retorna: `{ couponId, code, discountType, discountValue, discount, finalTotal }`
+
+
+---
+
+### LoyaltyModule (`src/loyalty/`)
+
+Módulo de programas de fidelidade por selos. Todos os endpoints exigem `X-Pizzeria-Id` e roles `owner` ou `admin`.
+
+**Arquivo:** `src/loyalty/loyalty.module.ts`
+**Controller:** `src/loyalty/loyalty.controller.ts`
+**Service:** `src/loyalty/loyalty.service.ts`
+**DTOs:** `create-loyalty.dto.ts`, `update-loyalty.dto.ts`
+
+#### GET /loyalty
+
+Lista todos os programas de fidelidade da pizzaria (ordenados por `createdAt desc`).
+
+#### GET /loyalty/:id
+
+Busca um programa por ID. Retorna `404` se não encontrado ou pertencer a outra pizzaria.
+
+#### POST /loyalty
+
+Cria um programa de fidelidade. Retorna `409` se já existir um programa com o mesmo nome.
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `name` | string | ✅ | Nome do programa (único por pizzaria) |
+| `stampsGoal` | int | ✅ | Selos necessários para resgatar a recompensa |
+| `reward` | string | ✅ | Descrição da recompensa |
+| `validityDays` | int | ❌ | Validade dos selos em dias (null = sem validade) |
+| `isActive` | boolean | ❌ | Ativo por padrão |
+
+#### PATCH /loyalty/:id
+
+Atualiza campos opcionais do programa. Verifica duplicidade de nome. Gera auditoria.
+
+#### DELETE /loyalty/:id
+
+Remove o programa permanentemente (hard delete). Retorna `204 No Content`. Gera auditoria.
+
+> **Nota:** Os selos dos clientes ficam em `Customer.loyaltyStamps`. O módulo de fidelidade define a meta e a recompensa — o controle de quantos selos cada cliente tem é gerenciado pelo `CustomersModule` (`PATCH /customers/:id` com `loyaltyStamps`).
+
