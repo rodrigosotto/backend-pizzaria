@@ -6,7 +6,7 @@
 DO $$
 DECLARE
   -- Pizzaria (ajuste para o ID real da sua pizzaria)
-  v_pizzeria_id UUID := '91f3243c-ffa0-4228-8f3d-0d2a5e2d99ad';
+  v_pizzeria_id UUID := 'e89ec9b5-2d7b-44ee-bc2b-5e44e75f7c6e';
 
   -- Categorias
   v_cat_pizzas      UUID := gen_random_uuid();

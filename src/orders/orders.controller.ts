@@ -72,6 +72,40 @@ export class OrdersController {
     return this.ordersService.create(pizzeriaId, dto, user.sub);
   }
 
+  // ── Available deliveries — pedidos prontos sem entregador ─────────────────
+
+  @Get('available-deliveries')
+  @Roles(UserRole.entregador, UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Pedidos prontos disponíveis para entrega',
+    description: 'Lista pedidos delivery com status "ready" sem entregador atribuído.',
+  })
+  @ApiResponse({ status: 200, description: 'Lista de pedidos disponíveis' })
+  availableDeliveries(@CurrentPizzeria() pizzeriaId: string) {
+    return this.ordersService.availableDeliveries(pizzeriaId);
+  }
+
+  // ── Claim delivery — entregador se auto-atribui ────────────────────────────
+
+  @Post(':id/claim')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.entregador, UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Entregador reivindica pedido pronto',
+    description: 'Entregador se auto-atribui ao pedido e muda status para "delivering".',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do pedido' })
+  @ApiResponse({ status: 200, description: 'Pedido atribuído ao entregador' })
+  @ApiResponse({ status: 400, description: 'Pedido não está pronto ou já foi atribuído' })
+  @ApiResponse({ status: 404, description: 'Pedido ou entregador não encontrado' })
+  claimDelivery(
+    @Param('id') id: string,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ordersService.claimDelivery(pizzeriaId, id, user.sub);
+  }
+
   // ── My deliveries ──────────────────────────────────────────────────────────
 
   @Get('my-deliveries')
@@ -180,7 +214,7 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.entregador)
   @ApiOperation({
     summary: 'Atualizar status do pedido',
     description: `Avança o status (RF06/RF07). Transições válidas:
@@ -202,7 +236,7 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
     @CurrentPizzeria() pizzeriaId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.ordersService.updateStatus(pizzeriaId, id, dto, user.sub);
+    return this.ordersService.updateStatus(pizzeriaId, id, dto, user.sub, user.role);
   }
 
   @Patch(':id/cancel')
