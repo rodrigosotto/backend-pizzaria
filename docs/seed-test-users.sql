@@ -85,6 +85,22 @@ BEGIN
     (gen_random_uuid(), uid_atendente,  pizzeria_id, 'atendente',  true, now_ts, now_ts),
     (gen_random_uuid(), uid_cozinha,    pizzeria_id, 'cozinha',    true, now_ts, now_ts);
 
+  -- ── 5. Criar registro de entregador e vincular ao usuário ─────────────────────
+  -- O endpoint GET /orders/my-deliveries busca deliverers.user_id = :userId
+  -- Se não existir o registro ou user_id não estiver preenchido, retorna 404.
+  INSERT INTO deliverers (id, pizzeria_id, user_id, name, phone, vehicle, is_active, created_at)
+  VALUES (
+    gen_random_uuid()::text,
+    pizzeria_id,
+    uid_entregador,
+    'Entregador Teste',
+    '(11) 99999-0001',
+    'Moto',
+    true,
+    now_ts
+  )
+  ON CONFLICT DO NOTHING;
+
   RAISE NOTICE 'Usuários criados com sucesso:';
   RAISE NOTICE '  entregador@pizzaria.test  id=%', uid_entregador;
   RAISE NOTICE '  atendente@pizzaria.test   id=%', uid_atendente;
