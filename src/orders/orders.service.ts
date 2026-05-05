@@ -387,7 +387,8 @@ export class OrdersService {
           pizzeriaId,
           orderNumber,
           type: dto.type,
-          status: OrderStatus.new,
+          status: OrderStatus.accepted,
+          acceptedAt: new Date(),
           customerId: dto.customerId,
           tableId: dto.tableId,
           tableSessionId: dto.tableSessionId,
@@ -421,6 +422,28 @@ export class OrdersService {
         await tx.couponUsage.create({
           data: { couponId, customerId: dto.customerId, orderId: newOrder.id },
         });
+      }
+
+      // RF76 — Baixa automática de estoque na criação (pedido já entra como aceito)
+      for (const item of newOrder.items) {
+        if (!item.productId) continue;
+        const recipes = await tx.productRecipe.findMany({ where: { productId: item.productId } });
+        for (const recipe of recipes) {
+          const consumed = recipe.quantity.mul(item.quantity);
+          await tx.stockMovement.create({
+            data: {
+              stockItemId: recipe.stockItemId,
+              type: 'auto_debit',
+              quantity: consumed,
+              reason: `Baixa automática — pedido #${orderNumber}`,
+              orderId: newOrder.id,
+            },
+          });
+          await tx.stockItem.update({
+            where: { id: recipe.stockItemId },
+            data: { quantity: { decrement: consumed } },
+          });
+        }
       }
 
       return newOrder;
@@ -650,9 +673,23 @@ export class OrdersService {
     id: string,
     dto: UpdateOrderStatusDto,
     userId: string,
+    userRole?: string,
   ) {
     const order = await this.prisma.db.order.findFirst({ where: { id, pizzeriaId } });
     if (!order) throw new NotFoundException('Pedido não encontrado');
+
+    // Entregador só pode marcar como "done" pedidos atribuídos a ele
+    if (userRole === UserRole.entregador) {
+      if (dto.status !== OrderStatus.done) {
+        throw new BadRequestException('Entregador só pode confirmar a conclusão da entrega');
+      }
+      const deliverer = await this.prisma.db.deliverer.findFirst({
+        where: { pizzeriaId, userId, isActive: true },
+      });
+      if (!deliverer || order.delivererId !== deliverer.id) {
+        throw new ForbiddenException('Este pedido não está atribuído a você');
+      }
+    }
 
     const allowed = TRANSITIONS[order.status];
     if (!allowed.includes(dto.status)) {
@@ -663,13 +700,6 @@ export class OrdersService {
 
     if (dto.status === OrderStatus.delivering && order.type !== OrderType.delivery) {
       throw new BadRequestException('Status "delivering" é exclusivo de pedidos delivery');
-    }
-
-    // RN08 — entregador obrigatório antes de "delivering"
-    if (dto.status === OrderStatus.delivering && !order.delivererId) {
-      throw new BadRequestException(
-        'Atribua um entregador ao pedido antes de marcá-lo como "Em Entrega" (RN08)',
-      );
     }
 
     const timestamps: Partial<{
@@ -844,5 +874,149 @@ export class OrdersService {
     });
 
     return updated;
+  }
+
+  // -------------------------------------------------------------------------
+  // My deliveries — pedidos atribuídos ao entregador logado
+  // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Available deliveries — pedidos prontos sem entregador (para o painel do entregador)
+  // -------------------------------------------------------------------------
+
+  async availableDeliveries(pizzeriaId: string) {
+    return this.prisma.db.order.findMany({
+      where: {
+        pizzeriaId,
+        type: OrderType.delivery,
+        status: OrderStatus.ready,
+        delivererId: null,
+      },
+      orderBy: { readyAt: 'asc' },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+        deliveryAddress: true,
+        items: {
+          include: {
+            product: { select: { id: true, name: true } },
+            productSize: { select: { id: true, sizeLabel: true } },
+          },
+        },
+      },
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Claim delivery — entregador se auto-atribui e inicia entrega
+  // -------------------------------------------------------------------------
+
+  async claimDelivery(pizzeriaId: string, orderId: string, userId: string) {
+    const deliverer = await this.prisma.db.deliverer.findFirst({
+      where: { pizzeriaId, userId, isActive: true },
+    });
+    if (!deliverer) {
+      throw new NotFoundException('Nenhum entregador ativo vinculado a este usuário nesta pizzaria');
+    }
+
+    const order = await this.prisma.db.order.findFirst({
+      where: { id: orderId, pizzeriaId },
+    });
+    if (!order) throw new NotFoundException('Pedido não encontrado');
+    if (order.type !== OrderType.delivery) {
+      throw new BadRequestException('Apenas pedidos delivery podem ser reivindicados');
+    }
+    if (order.status !== OrderStatus.ready) {
+      throw new BadRequestException('Apenas pedidos com status "pronto" podem ser reivindicados');
+    }
+    if (order.delivererId && order.delivererId !== deliverer.id) {
+      throw new BadRequestException('Este pedido já foi atribuído a outro entregador');
+    }
+
+    const updated = await this.prisma.db.order.update({
+      where: { id: orderId },
+      data: {
+        delivererId: deliverer.id,
+        status: OrderStatus.delivering,
+      },
+      include: {
+        customer: { select: { id: true, name: true, phone: true } },
+        deliveryAddress: true,
+        items: {
+          include: {
+            product: { select: { id: true, name: true } },
+            productSize: { select: { id: true, sizeLabel: true } },
+          },
+        },
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      pizzeriaId,
+      action: 'order.claim_delivery',
+      entity: 'Order',
+      entityId: orderId,
+      after: { delivererId: deliverer.id, status: OrderStatus.delivering },
+    });
+
+    return updated;
+  }
+
+  async findMyDeliveries(pizzeriaId: string, userId: string) {
+    // Localiza o Deliverer vinculado a este usuário da plataforma
+    const deliverer = await this.prisma.db.deliverer.findFirst({
+      where: { pizzeriaId, userId, isActive: true },
+    });
+
+    if (!deliverer) {
+      throw new NotFoundException(
+        'Nenhum entregador ativo vinculado a este usuário nesta pizzaria',
+      );
+    }
+
+    const [active, recent] = await this.prisma.db.$transaction([
+      // Pedidos aguardando retirada ou em rota
+      this.prisma.db.order.findMany({
+        where: {
+          pizzeriaId,
+          delivererId: deliverer.id,
+          status: { in: [OrderStatus.ready, OrderStatus.delivering] },
+        },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          deliveryAddress: true,
+          items: {
+            include: {
+              product: { select: { id: true, name: true } },
+              productSize: { select: { id: true, sizeLabel: true } },
+            },
+          },
+        },
+      }),
+      // Últimas 20 entregas concluídas hoje
+      this.prisma.db.order.findMany({
+        where: {
+          pizzeriaId,
+          delivererId: deliverer.id,
+          status: OrderStatus.done,
+          deliveredAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+        orderBy: { deliveredAt: 'desc' },
+        take: 20,
+        include: {
+          customer: { select: { id: true, name: true, phone: true } },
+          deliveryAddress: true,
+          items: {
+            include: {
+              product: { select: { id: true, name: true } },
+              productSize: { select: { id: true, sizeLabel: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    return { deliverer, active, recent };
   }
 }
