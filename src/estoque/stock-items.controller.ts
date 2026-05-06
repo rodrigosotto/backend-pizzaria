@@ -89,7 +89,7 @@ export class StockItemsController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({
     summary: 'Cadastrar insumo (RF72)',
     description: 'Cadastra insumo com categoria, unidade de medida e estoque mínimo para alerta (RN04). Se `quantity > 0`, registra automaticamente um movimento de entrada "Estoque inicial".',
@@ -105,7 +105,7 @@ export class StockItemsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({
     summary: 'Atualizar insumo',
     description: 'Atualiza metadados do insumo (nome, unidade, mínimo, custo, fornecedor). Para alterar a quantidade use o endpoint de movimentações.',
@@ -123,7 +123,7 @@ export class StockItemsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({
     summary: 'Remover insumo',
     description: 'Remove o insumo. Bloqueado se houver movimentações registradas.',

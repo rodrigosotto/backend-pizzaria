@@ -85,11 +85,6 @@ export class CreateOrderDto {
   @IsUUID()
   deliveryAddressId?: string;
 
-  @ApiPropertyOptional({ example: 'uuid-do-entregador', description: 'Motoboy designado para a entrega' })
-  @IsOptional()
-  @IsUUID()
-  delivererId?: string;
-
   @ApiPropertyOptional({
     example: 'PROMO10',
     description: 'Código de cupom de desconto (RN06: validado no servidor — vigência, mínimo, limite de usos)',

@@ -70,7 +70,7 @@ export class SuppliersController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({
     summary: 'Cadastrar fornecedor (RF82)',
     description: 'Cadastro completo: razão social, CNPJ, representante, telefone, e-mail e categorias de insumos fornecidos.',

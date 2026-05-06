@@ -56,4 +56,13 @@ export class CreateCategoryDto {
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, { message: 'availableTo deve ser HH:MM' })
   availableTo?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    default: true,
+    description: 'Se false, pedidos com apenas itens desta categoria pulam a fila da cozinha (ex: bebidas)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  requiresKitchen?: boolean;
 }

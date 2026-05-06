@@ -64,7 +64,7 @@ export class CaixaController {
   // =========================================================================
 
   @Post('sessions')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Abrir caixa (RF63)',
     description: `Registra uma nova sessão de caixa com fundo de troco inicial.
@@ -135,7 +135,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
 
   @Post('sessions/:id/close')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Fechar caixa (RF67/RF69)',
     description: `Fecha a sessão de caixa com relatório consolidado e conciliação de valores (RN03).
@@ -168,7 +168,7 @@ Bloqueado se a sessão já estiver fechada.`,
   // =========================================================================
 
   @Post('sessions/:id/withdrawals')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Registrar sangria (RF66)',
     description: `Registra uma retirada de dinheiro do caixa com motivo e responsável (RN03).

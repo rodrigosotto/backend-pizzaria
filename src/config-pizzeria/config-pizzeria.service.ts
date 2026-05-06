@@ -24,6 +24,7 @@ export class ConfigPizzeriaService {
       paymentMethods: ['cash', 'pix', 'credit', 'debit'] as Prisma.InputJsonValue,
       businessHours: {} as Prisma.InputJsonValue,
       autoMessages: Prisma.DbNull,
+      requireOpenCashier: false,
     };
   }
 
@@ -58,6 +59,8 @@ export class ConfigPizzeriaService {
         ...(dto.paymentMethods !== undefined && { paymentMethods: dto.paymentMethods as Prisma.InputJsonValue }),
         ...(dto.businessHours !== undefined && { businessHours: dto.businessHours as Prisma.InputJsonValue }),
         ...(dto.autoMessages !== undefined && { autoMessages: dto.autoMessages as Prisma.InputJsonValue }),
+        ...(dto.pixKey !== undefined && { pixKey: dto.pixKey }),
+        ...(dto.requireOpenCashier !== undefined && { requireOpenCashier: dto.requireOpenCashier }),
       },
     });
 
