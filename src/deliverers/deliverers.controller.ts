@@ -30,6 +30,7 @@ export class DeliverersController {
   constructor(private readonly deliverersService: DeliverersService) {}
 
   @Get()
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({ summary: 'Listar entregadores da pizzaria' })
   @ApiQuery({ name: 'active', required: false, type: Boolean })
   list(
@@ -41,6 +42,7 @@ export class DeliverersController {
   }
 
   @Get(':id')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({ summary: 'Buscar entregador por ID' })
   findById(
     @CurrentPizzeria() pizzeriaId: string,

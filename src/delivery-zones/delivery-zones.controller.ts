@@ -30,6 +30,7 @@ export class DeliveryZonesController {
   constructor(private readonly deliveryZonesService: DeliveryZonesService) {}
 
   @Get()
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({ summary: 'Listar zonas de entrega da pizzaria' })
   @ApiQuery({ name: 'active', required: false, type: Boolean })
   list(
@@ -41,6 +42,7 @@ export class DeliveryZonesController {
   }
 
   @Get(':id')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({ summary: 'Buscar zona de entrega por ID' })
   findById(
     @CurrentPizzeria() pizzeriaId: string,

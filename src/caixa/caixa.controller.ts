@@ -43,7 +43,7 @@ export class CaixaController {
   // =========================================================================
 
   @Get('dashboard')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Dashboard financeiro do caixa',
     description: `Retorna visão consolidada financeira (RF64/RF65/RF70/RF71):
@@ -95,7 +95,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
   }
 
   @Get('sessions')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Histórico de sessões de caixa',
     description: 'Lista todas as sessões de caixa da pizzaria, da mais recente para a mais antiga.',
@@ -118,7 +118,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
   }
 
   @Get('sessions/:id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Detalhes de uma sessão de caixa',
     description: 'Retorna a sessão com quem abriu, quem fechou e todas as sangrias.',
@@ -190,7 +190,7 @@ Bloqueado se a sessão estiver fechada.`,
   }
 
   @Get('sessions/:id/withdrawals')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
   @ApiOperation({
     summary: 'Listar sangrias da sessão',
     description: 'Retorna todas as sangrias registradas na sessão de caixa, em ordem cronológica.',
