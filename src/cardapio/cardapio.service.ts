@@ -57,6 +57,7 @@ export class CardapioService {
         isActive: dto.isActive ?? true,
         availableFrom: dto.availableFrom,
         availableTo: dto.availableTo,
+        requiresKitchen: dto.requiresKitchen ?? true,
       },
     });
 
@@ -91,6 +92,7 @@ export class CardapioService {
         isActive: dto.isActive,
         availableFrom: dto.availableFrom,
         availableTo: dto.availableTo,
+        ...(dto.requiresKitchen !== undefined && { requiresKitchen: dto.requiresKitchen }),
       },
     });
 

@@ -152,20 +152,42 @@ export class TablesService {
   }
 
   async removeTable(pizzeriaId: string, id: string, userId: string) {
-    const table = await this.findTableById(pizzeriaId, id);
+    const table = await this.prisma.db.table.findFirst({
+      where: { id, pizzeriaId },
+    });
+    if (!table) throw new NotFoundException('Mesa não encontrada');
 
-    if (table.status !== 'free') {
+    // Block if there is an active (open) session
+    const activeSession = await this.prisma.db.tableSession.findFirst({
+      where: { tableId: id, closedAt: null },
+      select: { id: true },
+    });
+    if (activeSession) {
       throw new BadRequestException(
-        'Só é possível remover mesas com status "free" (livre)',
+        'Mesa possui sessão ativa. Feche a sessão antes de remover.',
       );
     }
 
-    const activeSession = table.sessions[0] ?? null;
-    if (activeSession) {
-      throw new BadRequestException('Mesa possui sessão ativa. Feche a sessão antes de remover.');
-    }
+    // Remove in a transaction: disconnect orders → delete sessions → delete table
+    await this.prisma.db.$transaction(async (tx) => {
+      const sessions = await tx.tableSession.findMany({
+        where: { tableId: id },
+        select: { id: true },
+      });
 
-    await this.prisma.db.table.delete({ where: { id } });
+      if (sessions.length > 0) {
+        const sessionIds = sessions.map((s) => s.id);
+        // Disconnect orders from these sessions (preserve order history)
+        await tx.order.updateMany({
+          where: { tableSessionId: { in: sessionIds } },
+          data: { tableSessionId: null },
+        });
+        // Delete closed sessions
+        await tx.tableSession.deleteMany({ where: { tableId: id } });
+      }
+
+      await tx.table.delete({ where: { id } });
+    });
 
     this.audit.log({
       pizzeriaId,

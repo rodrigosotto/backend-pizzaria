@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
+import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -77,6 +78,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly deliveryQueue: DeliveryQueueService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -259,6 +261,7 @@ export class OrdersService {
         serviceFeeAppliesTo: true,
         acceptingOrders: true,
         businessHours: true,
+        requireOpenCashier: true,
       },
     });
 
@@ -275,6 +278,19 @@ export class OrdersService {
       }
     }
 
+    // RN — Bloquear pedidos se caixa obrigatório estiver fechado
+    if (config?.requireOpenCashier) {
+      const openSession = await this.prisma.db.cashSession.findFirst({
+        where: { pizzeriaId, closedAt: null },
+        select: { id: true },
+      });
+      if (!openSession) {
+        throw new BadRequestException(
+          'Caixa fechado. Abra o caixa antes de registrar pedidos.',
+        );
+      }
+    }
+
     if (dto.customerId) {
       const customer = await this.prisma.db.customer.findFirst({
         where: { id: dto.customerId, pizzeriaId },
@@ -283,14 +299,6 @@ export class OrdersService {
       if (customer.isBlacklisted) {
         throw new BadRequestException('Cliente está na lista negra e não pode fazer pedidos');
       }
-    }
-
-    // Validar delivererId pertence à pizzaria
-    if (dto.delivererId) {
-      const deliverer = await this.prisma.db.deliverer.findFirst({
-        where: { id: dto.delivererId, pizzeriaId, isActive: true },
-      });
-      if (!deliverer) throw new NotFoundException('Entregador não encontrado ou inativo nesta pizzaria');
     }
 
     // Validar tableSessionId pertence a uma mesa desta pizzaria
@@ -303,6 +311,14 @@ export class OrdersService {
     }
 
     const resolvedItems = await this.resolveItems(pizzeriaId, dto.items);
+
+    // Verifica se todos os itens são de categorias que não precisam de preparo (ex: bebidas)
+    const itemCategories = await this.prisma.db.product.findMany({
+      where: { id: { in: dto.items.map((i) => i.productId) }, pizzeriaId },
+      select: { category: { select: { requiresKitchen: true } } },
+    });
+    const needsKitchen = itemCategories.some((p) => p.category.requiresKitchen);
+    const initialStatus = needsKitchen ? OrderStatus.accepted : OrderStatus.ready;
 
     const subtotal = resolvedItems.reduce(
       (sum, i) => sum.plus(i.subtotal),
@@ -387,13 +403,13 @@ export class OrdersService {
           pizzeriaId,
           orderNumber,
           type: dto.type,
-          status: OrderStatus.accepted,
+          status: initialStatus,
           acceptedAt: new Date(),
+          readyAt: initialStatus === OrderStatus.ready ? new Date() : undefined,
           customerId: dto.customerId,
           tableId: dto.tableId,
           tableSessionId: dto.tableSessionId,
           deliveryAddressId: dto.deliveryAddressId,
-          delivererId: dto.delivererId,
           couponId,
           subtotal,
           deliveryFee,
@@ -779,6 +795,24 @@ export class OrdersService {
       after: { status: dto.status },
     });
 
+    // Auto-assign deliverer via queue when kitchen marks delivery order as ready
+    if (dto.status === OrderStatus.ready && order.type === OrderType.delivery) {
+      this.deliveryQueue.assignNextDeliverer(pizzeriaId, id).catch(() => {
+        // Silently ignored — order remains visible in "Disponíveis" for manual claim
+      });
+    }
+
+    // Reverse queue: when deliverer finishes, assign them the oldest waiting order
+    if (
+      dto.status === OrderStatus.done &&
+      order.type === OrderType.delivery &&
+      order.delivererId
+    ) {
+      this.deliveryQueue
+        .tryAssignPendingDelivery(pizzeriaId, order.delivererId)
+        .catch(() => {});
+    }
+
     return updatedOrder;
   }
 
@@ -928,6 +962,16 @@ export class OrdersService {
     if (order.status !== OrderStatus.ready) {
       throw new BadRequestException('Apenas pedidos com status "pronto" podem ser reivindicados');
     }
+    // Block deliverer if already on an active route
+    const activeRoute = await this.prisma.db.order.findFirst({
+      where: { pizzeriaId, delivererId: deliverer.id, status: OrderStatus.delivering },
+    });
+    if (activeRoute) {
+      throw new BadRequestException(
+        `Você já está em rota com o pedido #${activeRoute.orderNumber}. Conclua a entrega atual antes de assumir outra.`,
+      );
+    }
+
     if (order.delivererId && order.delivererId !== deliverer.id) {
       throw new BadRequestException('Este pedido já foi atribuído a outro entregador');
     }

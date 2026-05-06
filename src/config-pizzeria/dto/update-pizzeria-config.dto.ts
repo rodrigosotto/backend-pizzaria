@@ -81,4 +81,19 @@ export class UpdatePizzeriaConfigDto {
   })
   @IsOptional()
   autoMessages?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Chave PIX da pizzaria (CPF, CNPJ, e-mail, telefone ou chave aleatória)',
+    example: '11999990000',
+  })
+  @IsOptional()
+  @IsString()
+  pixKey?: string;
+
+  @ApiPropertyOptional({
+    description: 'Exige caixa aberto para registrar pedidos',
+  })
+  @IsOptional()
+  @IsBoolean()
+  requireOpenCashier?: boolean;
 }

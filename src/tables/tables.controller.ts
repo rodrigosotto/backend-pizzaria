@@ -78,7 +78,7 @@ export class TablesController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({ summary: 'Criar mesa' })
   createTable(
     @CurrentPizzeria() pizzeriaId: string,
@@ -89,7 +89,7 @@ export class TablesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @ApiOperation({ summary: 'Atualizar mesa' })
   updateTable(
     @CurrentPizzeria() pizzeriaId: string,
@@ -101,7 +101,7 @@ export class TablesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remover mesa (somente se livre e sem sessão ativa)' })
   removeTable(

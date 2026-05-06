@@ -207,8 +207,10 @@ model PizzeriaConfig {
   pizzaPricingRule    String   @default("most_expensive") @map("pizza_pricing_rule")
   paymentMethods      Json     @default("[\"cash\",\"pix\",\"credit\",\"debit\"]") @map("payment_methods")
   businessHours       Json     @map("business_hours")
-  autoMessages        Json?    @map("auto_messages")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  autoMessages          Json?    @map("auto_messages")
+  pixKey                String?  @map("pix_key") @db.VarChar(150)
+  requireOpenCashier    Boolean  @default(false) @map("require_open_cashier")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
 
@@ -223,8 +225,9 @@ model ProductCategory {
   slug          String  @db.VarChar(100)
   sortOrder     Int     @default(0) @map("sort_order")
   isActive      Boolean @default(true) @map("is_active")
-  availableFrom String? @map("available_from")
-  availableTo   String? @map("available_to")
+  availableFrom   String?  @map("available_from")
+  availableTo     String?  @map("available_to")
+  requiresKitchen Boolean  @default(true) @map("requires_kitchen")
 
   products Product[]
   pizzeria Pizzeria  @relation(fields: [pizzeriaId], references: [id])
