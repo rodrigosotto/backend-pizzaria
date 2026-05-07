@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../infra/database/prisma.service';
+import { DeliveryGateway } from './delivery.gateway';
 
 @Injectable()
 export class DeliveryQueueService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly gateway?: DeliveryGateway,
+  ) {}
 
   /**
    * Assigns the next available deliverer to an order using FIFO queue logic:
@@ -45,7 +49,17 @@ export class DeliveryQueueService {
       },
     });
 
-    if (candidates.length === 0) return null;
+    // Step 2b — If no deliverer available, notify pizzeria room so entregadores can see the available delivery
+    if (candidates.length === 0) {
+      const order = await this.prisma.db.order.findUnique({
+        where: { id: orderId },
+        select: { id: true, orderNumber: true, total: true },
+      });
+      if (order) {
+        this.gateway?.notifyDeliveryAvailable(pizzeriaId, order);
+      }
+      return null;
+    }
 
     // Step 3 — Sort: no prior deliveries first, then by oldest last-delivery time
     candidates.sort((a, b) => {
@@ -56,10 +70,14 @@ export class DeliveryQueueService {
 
     const next = candidates[0];
 
-    await this.prisma.db.order.update({
+    const updatedOrder = await this.prisma.db.order.update({
       where: { id: orderId },
       data: { delivererId: next.id },
+      select: { id: true, orderNumber: true, total: true, deliveryAddressId: true },
     });
+
+    // Notify the assigned deliverer via WebSocket
+    this.gateway?.notifyDelivererAssigned(next.id, updatedOrder);
 
     return next.id;
   }
@@ -85,10 +103,14 @@ export class DeliveryQueueService {
 
     if (!pending) return null;
 
-    await this.prisma.db.order.update({
+    const updatedOrder = await this.prisma.db.order.update({
       where: { id: pending.id },
       data: { delivererId },
+      select: { id: true, orderNumber: true, total: true, deliveryAddressId: true },
     });
+
+    // Notify the deliverer via WebSocket
+    this.gateway?.notifyDelivererAssigned(delivererId, updatedOrder);
 
     return pending.id;
   }
