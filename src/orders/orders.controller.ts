@@ -27,6 +27,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
@@ -134,6 +135,9 @@ export class OrdersController {
   @ApiQuery({ name: 'status', enum: OrderStatus, required: false })
   @ApiQuery({ name: 'type', enum: OrderType, required: false })
   @ApiQuery({ name: 'customerId', required: false })
+  @ApiQuery({ name: 'tableId', required: false })
+  @ApiQuery({ name: 'tableSessionId', required: false })
+  @ApiQuery({ name: 'requiresKitchen', required: false, description: 'true | false — filtra por pedidos que requerem (ou não) cozinha' })
   @ApiQuery({ name: 'dateFrom', required: false, description: 'ISO 8601, ex: 2025-01-01' })
   @ApiQuery({ name: 'dateTo', required: false, description: 'ISO 8601, ex: 2025-12-31' })
   @ApiQuery({ name: 'page', required: false, description: 'Padrão: 1' })
@@ -144,6 +148,9 @@ export class OrdersController {
     @Query('status') status?: OrderStatus,
     @Query('type') type?: OrderType,
     @Query('customerId') customerId?: string,
+    @Query('tableId') tableId?: string,
+    @Query('tableSessionId') tableSessionId?: string,
+    @Query('requiresKitchen') requiresKitchen?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('page') page?: string,
@@ -153,6 +160,9 @@ export class OrdersController {
       status,
       type,
       customerId,
+      tableId,
+      tableSessionId,
+      requiresKitchen: requiresKitchen === 'true' ? true : requiresKitchen === 'false' ? false : undefined,
       dateFrom,
       dateTo,
       page: page ? parseInt(page, 10) : undefined,
@@ -190,6 +200,25 @@ export class OrdersController {
     @CurrentPizzeria() pizzeriaId: string,
   ) {
     return this.ordersService.findOne(pizzeriaId, id);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @ApiOperation({
+    summary: 'Editar campos do cabeçalho do pedido',
+    description: 'Permite editar notes, estimatedTime, customerId e deliveryAddressId. Bloqueado para pedidos done ou cancelled.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do pedido' })
+  @ApiResponse({ status: 200, description: 'Pedido atualizado' })
+  @ApiResponse({ status: 404, description: 'Pedido não encontrado' })
+  @ApiResponse({ status: 422, description: 'Pedido finalizado ou cancelado' })
+  updateOrder(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ordersService.updateOrder(pizzeriaId, id, dto, user.sub);
   }
 
   @Patch(':id/items')
@@ -237,6 +266,28 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
     @CurrentUser() user: JwtPayload,
   ) {
     return this.ordersService.updateStatus(pizzeriaId, id, dto, user.sub, user.role);
+  }
+
+  @Patch(':id/items/:itemId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @ApiOperation({
+    summary: 'Cancelar item individual do pedido',
+    description: 'Marca o item como cancelado e recalcula os totais. Não é permitido cancelar o último item ativo (cancele o pedido inteiro).',
+  })
+  @ApiParam({ name: 'id', description: 'UUID do pedido' })
+  @ApiParam({ name: 'itemId', description: 'UUID do item' })
+  @ApiResponse({ status: 200, description: 'Item cancelado e totais recalculados' })
+  @ApiResponse({ status: 400, description: 'Item já cancelado ou seria o último item' })
+  @ApiResponse({ status: 404, description: 'Pedido ou item não encontrado' })
+  cancelItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body('reason') reason: string,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.ordersService.cancelItem(pizzeriaId, id, itemId, reason ?? '', user.sub);
   }
 
   @Patch(':id/cancel')

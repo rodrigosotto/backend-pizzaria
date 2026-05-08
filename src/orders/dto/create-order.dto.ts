@@ -106,6 +106,11 @@ export class CreateOrderDto {
   @Min(1)
   estimatedTime?: number;
 
+  @ApiPropertyOptional({ description: 'UUID do pedido pai — para sub-pedidos criados durante o preparo' })
+  @IsOptional()
+  @IsUUID()
+  parentOrderId?: string;
+
   @ApiProperty({
     type: [CreateOrderItemDto],
     description: 'Itens do pedido. Mínimo 1 item.',

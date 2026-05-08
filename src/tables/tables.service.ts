@@ -46,6 +46,12 @@ export class TablesService {
           where: { closedAt: null },
           take: 1,
           orderBy: { openedAt: 'desc' },
+          include: {
+            orders: {
+              where: { status: { not: 'cancelled' } },
+              select: { total: true },
+            },
+          },
         },
       },
       orderBy: { number: 'asc' },
@@ -288,6 +294,7 @@ export class TablesService {
     tableId: string,
     sessionId: string,
     userId: string,
+    paymentMethod?: string,
   ) {
     const table = await this.prisma.db.table.findFirst({
       where: { id: tableId, pizzeriaId },
@@ -307,7 +314,7 @@ export class TablesService {
     const [closedSession] = await this.prisma.db.$transaction([
       this.prisma.db.tableSession.update({
         where: { id: sessionId },
-        data: { closedAt: new Date() },
+        data: { closedAt: new Date(), ...(paymentMethod ? { paymentMethod } : {}) },
       }),
       this.prisma.db.table.update({
         where: { id: tableId },

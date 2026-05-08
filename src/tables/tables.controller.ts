@@ -149,9 +149,10 @@ export class TablesController {
     @CurrentPizzeria() pizzeriaId: string,
     @Param('tableId') tableId: string,
     @Param('sessionId') sessionId: string,
+    @Body('paymentMethod') paymentMethod: string | undefined,
     @CurrentUser() user: { sub: string },
   ) {
-    return this.tablesService.closeSession(pizzeriaId, tableId, sessionId, user.sub);
+    return this.tablesService.closeSession(pizzeriaId, tableId, sessionId, user.sub, paymentMethod);
   }
 
   // =========================================================================

@@ -11,6 +11,7 @@ import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 import { CancelOrderDto } from './dto/cancel-order.dto';
 import { RegisterPaymentDto } from './dto/register-payment.dto';
 import {
@@ -418,6 +419,8 @@ export class OrdersService {
           total,
           notes: dto.notes,
           estimatedTime: dto.estimatedTime,
+          parentOrderId: dto.parentOrderId,
+          requiresKitchen: needsKitchen,
           items: {
             create: resolvedItems.map((i) => ({
               productId: i.productId,
@@ -576,6 +579,130 @@ export class OrdersService {
   }
 
   // -------------------------------------------------------------------------
+  // Update order header fields (notes, estimatedTime, customerId, deliveryAddressId)
+  // -------------------------------------------------------------------------
+
+  async updateOrder(pizzeriaId: string, id: string, dto: UpdateOrderDto, userId: string) {
+    const order = await this.prisma.db.order.findFirst({ where: { id, pizzeriaId } });
+    if (!order) throw new NotFoundException('Pedido não encontrado');
+
+    if (['done', 'cancelled'].includes(order.status)) {
+      throw new UnprocessableEntityException('Pedido finalizado ou cancelado não pode ser editado');
+    }
+
+    if (dto.deliveryAddressId && order.type !== OrderType.delivery) {
+      throw new BadRequestException('Endereço de entrega só pode ser alterado em pedidos delivery');
+    }
+
+    if (dto.customerId) {
+      const customer = await this.prisma.db.customer.findFirst({
+        where: { id: dto.customerId, pizzeriaId },
+      });
+      if (!customer) throw new NotFoundException('Cliente não encontrado');
+    }
+
+    const updated = await this.prisma.db.order.update({
+      where: { id },
+      data: {
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.estimatedTime !== undefined && { estimatedTime: dto.estimatedTime }),
+        ...(dto.customerId !== undefined && { customerId: dto.customerId }),
+        ...(dto.deliveryAddressId !== undefined && { deliveryAddressId: dto.deliveryAddressId }),
+      },
+    });
+
+    this.audit.log({
+      pizzeriaId,
+      userId,
+      action: 'order.update',
+      entity: 'Order',
+      entityId: id,
+      before: {
+        notes: order.notes,
+        estimatedTime: order.estimatedTime,
+        customerId: order.customerId,
+        deliveryAddressId: order.deliveryAddressId,
+      },
+      after: dto as Record<string, unknown>,
+    });
+
+    return updated;
+  }
+
+  // -------------------------------------------------------------------------
+  // Cancel individual order item
+  // -------------------------------------------------------------------------
+
+  async cancelItem(
+    pizzeriaId: string,
+    orderId: string,
+    itemId: string,
+    reason: string,
+    userId: string,
+  ) {
+    const order = await this.prisma.db.order.findFirst({
+      where: { id: orderId, pizzeriaId },
+      include: { items: true },
+    });
+    if (!order) throw new NotFoundException('Pedido não encontrado');
+
+    if (['done', 'cancelled'].includes(order.status)) {
+      throw new UnprocessableEntityException('Pedido finalizado ou cancelado');
+    }
+
+    const item = order.items.find((i) => i.id === itemId);
+    if (!item) throw new NotFoundException('Item não encontrado neste pedido');
+    if (item.cancelledAt) throw new BadRequestException('Item já foi cancelado');
+
+    if (order.items.filter((i) => !i.cancelledAt).length <= 1) {
+      throw new BadRequestException(
+        'Não é possível cancelar o último item ativo. Cancele o pedido inteiro.',
+      );
+    }
+
+    await this.prisma.db.orderItem.update({
+      where: { id: itemId },
+      data: { cancelledAt: new Date(), cancelReason: reason || null },
+    });
+
+    // Recalcular totais com os itens restantes
+    const activeItems = order.items.filter((i) => i.id !== itemId && !i.cancelledAt);
+    const newSubtotal = activeItems.reduce(
+      (sum, i) => sum.plus(i.subtotal),
+      new Prisma.Decimal(0),
+    );
+
+    const config = await this.prisma.db.pizzeriaConfig.findUnique({
+      where: { pizzeriaId },
+      select: { serviceFeePct: true, serviceFeeAppliesTo: true },
+    });
+    let serviceFee = new Prisma.Decimal(0);
+    if (config?.serviceFeePct && Number(config.serviceFeePct) > 0) {
+      const applies = config.serviceFeeAppliesTo === 'all' || config.serviceFeeAppliesTo === order.type;
+      if (applies) serviceFee = newSubtotal.mul(config.serviceFeePct).div(100).toDecimalPlaces(2);
+    }
+
+    const newTotal = newSubtotal.minus(order.discount).plus(order.deliveryFee).plus(serviceFee);
+
+    await this.prisma.db.order.update({
+      where: { id: orderId },
+      data: { subtotal: newSubtotal, serviceFee, total: newTotal },
+    });
+
+    this.audit.log({
+      pizzeriaId,
+      userId,
+      action: 'order.item_cancelled',
+      entity: 'OrderItem',
+      entityId: itemId,
+      before: { cancelledAt: null },
+      after: { cancelledAt: new Date().toISOString(), cancelReason: reason },
+    });
+
+    return { message: 'Item cancelado', itemId };
+  }
+
+  // -------------------------------------------------------------------------
   // List orders
   // -------------------------------------------------------------------------
 
@@ -587,6 +714,9 @@ export class OrdersService {
       dateFrom?: string;
       dateTo?: string;
       customerId?: string;
+      tableId?: string;
+      tableSessionId?: string;
+      requiresKitchen?: boolean;
       page?: number;
       limit?: number;
     },
@@ -599,6 +729,9 @@ export class OrdersService {
     if (filters.status) where.status = filters.status;
     if (filters.type) where.type = filters.type;
     if (filters.customerId) where.customerId = filters.customerId;
+    if (filters.tableId) where.tableId = filters.tableId;
+    if (filters.tableSessionId) where.tableSessionId = filters.tableSessionId;
+    if (filters.requiresKitchen !== undefined) where.requiresKitchen = filters.requiresKitchen;
     if (filters.dateFrom || filters.dateTo) {
       where.createdAt = {};
       if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
@@ -621,6 +754,7 @@ export class OrdersService {
           },
           deliverer: { select: { id: true, name: true } },
           coupon: { select: { id: true, code: true } },
+          table: { select: { id: true, number: true } },
         },
       }),
       this.prisma.db.order.count({ where }),
@@ -650,6 +784,10 @@ export class OrdersService {
         coupon: { select: { id: true, code: true, discountType: true, discountValue: true } },
         table: { select: { id: true, number: true } },
         tableSession: { select: { id: true, openedAt: true } },
+        children: {
+          select: { id: true, orderNumber: true, status: true, total: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 

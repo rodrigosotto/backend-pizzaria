@@ -6,6 +6,7 @@ import {
 import multipart from '@fastify/multipart';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { TransformInterceptor } from './core/interceptors/transform.interceptor';
@@ -19,6 +20,9 @@ async function bootstrap() {
 
   // ── Multipart (file uploads) ───────────────────────────────────────────────
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB
+
+  // ── WebSocket adapter (Socket.io) ─────────────────────────────────────────
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   // ── Global prefix ──────────────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');

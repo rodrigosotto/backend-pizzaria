@@ -413,6 +413,7 @@ model TableSession {
   customerCpf   String?   @map("customer_cpf") @db.VarChar(14)
   openedAt      DateTime  @default(now()) @map("opened_at")
   closedAt      DateTime? @map("closed_at")
+  paymentMethod String?   @map("payment_method") @db.VarChar(20)
 
   table  Table   @relation(fields: [tableId], references: [id])
   orders Order[]
@@ -550,6 +551,8 @@ model Order {
   readyAt           DateTime?      @map("ready_at")
   deliveredAt       DateTime?      @map("delivered_at")
   cancelledAt       DateTime?      @map("cancelled_at")
+  parentOrderId     String?        @map("parent_order_id")
+  requiresKitchen   Boolean        @default(true) @map("requires_kitchen")
 
   pizzeria        Pizzeria         @relation(fields: [pizzeriaId], references: [id])
   customer        Customer?        @relation(fields: [customerId], references: [id])
@@ -559,6 +562,8 @@ model Order {
   deliverer       Deliverer?       @relation(fields: [delivererId], references: [id])
   coupon          Coupon?          @relation(fields: [couponId], references: [id])
   items           OrderItem[]
+  parent          Order?           @relation("OrderChildren", fields: [parentOrderId], references: [id])
+  children        Order[]          @relation("OrderChildren")
 
   @@unique([pizzeriaId, orderNumber])
   @@map("orders")
@@ -576,6 +581,8 @@ model OrderItem {
   subtotal      Decimal @db.Decimal(10, 2)
   flavors       Json?
   notes         String?
+  cancelledAt   DateTime? @map("cancelled_at")
+  cancelReason  String?   @map("cancel_reason")
 
   order       Order        @relation(fields: [orderId], references: [id])
   product     Product      @relation(fields: [productId], references: [id])
