@@ -24,6 +24,7 @@ import { DeliverersModule } from './deliverers/deliverers.module';
 import { DeliveryZonesModule } from './delivery-zones/delivery-zones.module';
 import { PrintersModule } from './printers/printers.module';
 import { TablesModule } from './tables/tables.module';
+import { RecipesModule } from './recipes/recipes.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { TablesModule } from './tables/tables.module';
     DeliveryZonesModule,
     PrintersModule,
     TablesModule,
+    RecipesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

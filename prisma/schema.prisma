@@ -282,7 +282,9 @@ model ProductRecipe {
   productId   String   @map("product_id")
   stockItemId String   @map("stock_item_id")
   /// Quantidade do insumo consumida por unidade do produto
-  quantity    Decimal  @db.Decimal(10, 3)
+  quantity    Decimal  @db.Decimal(10, 4)
+  /// Unidade de medida usada na receita (ex: g, ml, un)
+  unit        String   @default("un") @db.VarChar(10)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -654,7 +656,9 @@ model StockMovement {
   stockItemId String   @map("stock_item_id")
   /// entry | withdrawal | loss | adjustment | auto_debit
   type        String   @db.VarChar(20)
-  quantity    Decimal  @db.Decimal(10, 3)
+  quantity    Decimal  @db.Decimal(10, 4)
+  /// Unidade de medida usada na receita (ex: g, ml, un)
+  unit        String   @default("un") @db.VarChar(10)
   reason      String?
   createdBy   String?  @map("created_by")
   orderId     String?  @map("order_id")
