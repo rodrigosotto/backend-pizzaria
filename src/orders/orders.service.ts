@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
+import { KdsService } from '../kds/kds.service';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -80,6 +81,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly deliveryQueue: DeliveryQueueService,
+    private readonly kdsService: KdsService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -949,6 +951,18 @@ export class OrdersService {
       this.deliveryQueue
         .tryAssignPendingDelivery(pizzeriaId, order.delivererId)
         .catch(() => {});
+    }
+
+    // KDS — RF20: adiciona itens à fila da cozinha quando pedido é aceito
+    if (dto.status === OrderStatus.accepted && order.requiresKitchen) {
+      this.prisma.db.orderItem
+        .findMany({ where: { orderId: id }, select: { productId: true, quantity: true, notes: true } })
+        .then((items) =>
+          this.kdsService.addItemsToQueue(pizzeriaId, id, order.orderNumber, items),
+        )
+        .catch(() => {
+          // Silencioso — KDS não deve derrubar a operação principal
+        });
     }
 
     return updatedOrder;
