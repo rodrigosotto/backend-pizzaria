@@ -8,22 +8,20 @@ import {
 import { AuthService } from './auth.service';
 import type { JwtPayload } from './auth.service';
 import { SyncUserDto } from './dto/sync-user.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto, TokenPairResponseDto } from './dto/refresh-token.dto';
+import { LogoutDto } from './dto/logout.dto';
 import { UserWithRolesDto } from './dto/auth-response.dto';
 import { ApiErrorResponse } from '../../common/swagger/api-response.swagger';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { SupabaseJwtService } from './supabase-jwt.service';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly supabaseJwt: SupabaseJwtService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
-  // ── Sync ────────────────────────────────────────────────────────────────────
+  // ── Sync (Supabase) ─────────────────────────────────────────────────────────
 
   @Public()
   @Post('sync')
@@ -42,6 +40,24 @@ export class AuthController {
     return this.authService.syncUser(token, dto);
   }
 
+  // ── Login ───────────────────────────────────────────────────────────────────
+
+  @Public()
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Login com e-mail e senha',
+    description:
+      'Autentica o usuário com e-mail e senha locais. ' +
+      'Retorna um `accessToken` (válido por 15 minutos) e um `refreshToken` (válido por 30 dias). ' +
+      'Use `POST /auth/refresh` para renovar o access token antes de expirar.',
+  })
+  @ApiResponse({ status: 200, description: 'Login realizado.', type: TokenPairResponseDto })
+  @ApiResponse({ status: 401, description: 'Credenciais inválidas.', type: ApiErrorResponse })
+  login(@Body() dto: LoginDto) {
+    return this.authService.login(dto.email, dto.password);
+  }
+
   // ── Refresh Token ───────────────────────────────────────────────────────────
 
   @Public()
@@ -50,16 +66,31 @@ export class AuthController {
   @ApiOperation({
     summary: 'Renovar access token',
     description:
-      'Recebe o `refreshToken` emitido pelo Supabase Auth e retorna um novo par `accessToken` + `refreshToken`. ' +
-      'Use este endpoint quando o `accessToken` (JWT) expirar — normalmente após 1 hora. ' +
-      'O refresh token antigo é invalidado automaticamente pelo Supabase (rotação de tokens).',
+      'Valida o `refreshToken` armazenado no banco e emite um novo par `accessToken` + `refreshToken`. ' +
+      'O token antigo é revogado imediatamente (rotação obrigatória). ' +
+      'Se um token já revogado for enviado, todas as sessões do usuário são encerradas.',
   })
-  @ApiResponse({ status: 200, description: 'Novo par de tokens retornado', schema: {
-    example: { accessToken: 'eyJ...', refreshToken: 'abc...', expiresAt: 1745000000 },
-  }})
-  @ApiResponse({ status: 401, description: 'Refresh token inválido ou expirado', type: ApiErrorResponse })
+  @ApiResponse({ status: 200, description: 'Novo par de tokens retornado.', type: TokenPairResponseDto })
+  @ApiResponse({ status: 401, description: 'Refresh token inválido, expirado ou revogado.', type: ApiErrorResponse })
   refresh(@Body() dto: RefreshTokenDto) {
-    return this.supabaseJwt.refreshSession(dto.refreshToken);
+    return this.authService.refreshAccessToken(dto.refreshToken);
+  }
+
+  // ── Logout ──────────────────────────────────────────────────────────────────
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Encerrar sessão',
+    description:
+      'Revoga o `refreshToken` da sessão atual. ' +
+      'O `accessToken` continua válido até expirar (15 min), mas não poderá ser renovado.',
+  })
+  @ApiResponse({ status: 204, description: 'Sessão encerrada.' })
+  @ApiResponse({ status: 401, description: 'Access token ausente ou inválido.', type: ApiErrorResponse })
+  logout(@CurrentUser() user: JwtPayload, @Body() dto: LogoutDto) {
+    return this.authService.logout(user.sub, dto.refreshToken);
   }
 
   // ── Me ──────────────────────────────────────────────────────────────────────
