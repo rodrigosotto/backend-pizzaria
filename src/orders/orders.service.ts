@@ -9,6 +9,7 @@ import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
 import { KdsService } from '../kds/kds.service';
+import { OrdersGateway } from './orders.gateway';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -82,6 +83,7 @@ export class OrdersService {
     private readonly audit: AuditService,
     private readonly deliveryQueue: DeliveryQueueService,
     private readonly kdsService: KdsService,
+    private readonly ordersGateway: OrdersGateway,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -478,6 +480,8 @@ export class OrdersService {
       entityId: order.id,
       after: { orderNumber: order.orderNumber, type: order.type, total: String(order.total) },
     });
+
+    this.ordersGateway.notifyOrderCreated(pizzeriaId, order);
 
     return order;
   }
@@ -933,6 +937,14 @@ export class OrdersService {
       entityId: id,
       before: { status: order.status },
       after: { status: dto.status },
+    });
+
+    this.ordersGateway.notifyOrderStatusChanged(pizzeriaId, {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      previousStatus: order.status,
+      status: dto.status,
+      updatedAt: new Date(),
     });
 
     // Auto-assign deliverer via queue when kitchen marks delivery order as ready
