@@ -131,8 +131,23 @@ model User {
   openedCashSessions CashSession[]      @relation("CashOpener")
   closedCashSessions CashSession[]      @relation("CashCloser")
   auditLogs          AuditLog[]
+  refreshTokens      RefreshToken[]
 
   @@map("users")
+}
+
+/// Tokens de refresh para autenticação própria (sem Supabase)
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique // bcrypt hash da parte secreta do token
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("refresh_tokens")
 }
 
 /// Pizzarias cadastradas na plataforma
