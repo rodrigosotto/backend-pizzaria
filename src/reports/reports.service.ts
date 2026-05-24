@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../infra/database/prisma.service';
 import { ReportFiltersDto, ReportFiltersWithLimitDto } from './dto/report-filters.dto';
@@ -23,6 +23,12 @@ function parsePeriod(filters: ReportFiltersDto): { from: Date; to: Date } {
   const to = filters.dateTo
     ? new Date(filters.dateTo + 'T23:59:59.999Z')
     : new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); // fim do mês atual
+
+  if (from > to) {
+    throw new BadRequestException(
+      'dateFrom não pode ser posterior a dateTo.',
+    );
+  }
 
   return { from, to };
 }
@@ -431,6 +437,115 @@ export class ReportsService {
         totalDiscount: Number(r.total_discount),
         totalRevenue:  Number(r.total_revenue),
       })),
+    };
+  }
+
+  // =========================================================================
+  // DELIVERIES REPORT
+  // =========================================================================
+
+  /**
+   * Métricas de entregas por entregador no período:
+   * total de entregas, tempo médio (readyAt→deliveredAt), taxa no prazo e receita de taxa de entrega.
+   */
+  async getDeliveriesReport(pizzeriaId: string, filters: ReportFiltersDto) {
+    const { from, to } = parsePeriod(filters);
+
+    const [totalsRaw, byDelivererRaw] = await Promise.all([
+
+      // Totais gerais — pedidos delivery concluídos no período
+      this.prisma.db.$queryRaw<Array<{
+        total_deliveries:    bigint;
+        avg_delivery_time:   string | null;
+        total_delivery_fee:  string;
+        on_time_count:       bigint;
+        with_estimate_count: bigint;
+      }>>`
+        SELECT
+          COUNT(*)                                                                    AS total_deliveries,
+          AVG(
+            EXTRACT(EPOCH FROM (delivered_at - ready_at)) / 60.0
+          )::text                                                                     AS avg_delivery_time,
+          COALESCE(SUM(delivery_fee), 0)::text                                       AS total_delivery_fee,
+          COUNT(*) FILTER (
+            WHERE estimated_time IS NOT NULL
+              AND EXTRACT(EPOCH FROM (delivered_at - created_at)) / 60.0 <= estimated_time
+          )                                                                           AS on_time_count,
+          COUNT(*) FILTER (WHERE estimated_time IS NOT NULL)                         AS with_estimate_count
+        FROM orders
+        WHERE pizzeria_id  = ${pizzeriaId}
+          AND type         = 'delivery'
+          AND status       = 'done'
+          AND delivered_at BETWEEN ${from} AND ${to}
+      `,
+
+      // Por entregador — inclui os sem entrega no período (deliveries = 0)
+      this.prisma.db.$queryRaw<Array<{
+        deliverer_id:        string;
+        deliverer_name:      string;
+        vehicle:             string | null;
+        deliveries:          bigint;
+        avg_delivery_time:   string | null;
+        total_delivery_fee:  string;
+        revenue:             string;
+        on_time_count:       bigint;
+        with_estimate_count: bigint;
+      }>>`
+        SELECT
+          d.id                                                                        AS deliverer_id,
+          d.name                                                                      AS deliverer_name,
+          d.vehicle,
+          COUNT(o.id)                                                                 AS deliveries,
+          AVG(
+            EXTRACT(EPOCH FROM (o.delivered_at - o.ready_at)) / 60.0
+          )::text                                                                     AS avg_delivery_time,
+          COALESCE(SUM(o.delivery_fee), 0)::text                                     AS total_delivery_fee,
+          COALESCE(SUM(o.total), 0)::text                                            AS revenue,
+          COUNT(o.id) FILTER (
+            WHERE o.estimated_time IS NOT NULL
+              AND EXTRACT(EPOCH FROM (o.delivered_at - o.created_at)) / 60.0 <= o.estimated_time
+          )                                                                           AS on_time_count,
+          COUNT(o.id) FILTER (WHERE o.estimated_time IS NOT NULL)                   AS with_estimate_count
+        FROM deliverers d
+        LEFT JOIN orders o
+          ON  o.deliverer_id  = d.id
+          AND o.type          = 'delivery'
+          AND o.status        = 'done'
+          AND o.delivered_at  BETWEEN ${from} AND ${to}
+        WHERE d.pizzeria_id = ${pizzeriaId}
+          AND d.is_active   = true
+        GROUP BY d.id, d.name, d.vehicle
+        ORDER BY deliveries DESC, d.name
+      `,
+    ]);
+
+    const t = totalsRaw[0];
+    const totalDeliveries    = Number(t?.total_deliveries    ?? 0);
+    const withEstimateTotal  = Number(t?.with_estimate_count ?? 0);
+    const onTimeTotal        = Number(t?.on_time_count       ?? 0);
+
+    return {
+      period: { from: from.toISOString(), to: to.toISOString() },
+      totals: {
+        totalDeliveries,
+        avgDeliveryTime:  t?.avg_delivery_time != null ? Number(t.avg_delivery_time) : null,
+        onTimeRate:       withEstimateTotal > 0 ? (onTimeTotal / withEstimateTotal) * 100 : null,
+        totalDeliveryFee: Number(t?.total_delivery_fee ?? 0),
+      },
+      byDeliverer: byDelivererRaw.map((r) => {
+        const withEst   = Number(r.with_estimate_count);
+        const onTimeCnt = Number(r.on_time_count);
+        return {
+          delivererId:     r.deliverer_id,
+          delivererName:   r.deliverer_name,
+          vehicle:         r.vehicle ?? null,
+          deliveries:      Number(r.deliveries),
+          avgDeliveryTime: r.avg_delivery_time != null ? Number(r.avg_delivery_time) : null,
+          onTimeRate:      withEst > 0 ? (onTimeCnt / withEst) * 100 : null,
+          totalDeliveryFee: Number(r.total_delivery_fee),
+          revenue:         Number(r.revenue),
+        };
+      }),
     };
   }
 

@@ -8,6 +8,8 @@ import {
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
+import { KdsService } from '../kds/kds.service';
+import { OrdersGateway } from './orders.gateway';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -80,6 +82,8 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly deliveryQueue: DeliveryQueueService,
+    private readonly kdsService: KdsService,
+    private readonly ordersGateway: OrdersGateway,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -476,6 +480,8 @@ export class OrdersService {
       entityId: order.id,
       after: { orderNumber: order.orderNumber, type: order.type, total: String(order.total) },
     });
+
+    this.ordersGateway.notifyOrderCreated(pizzeriaId, order);
 
     return order;
   }
@@ -933,6 +939,14 @@ export class OrdersService {
       after: { status: dto.status },
     });
 
+    this.ordersGateway.notifyOrderStatusChanged(pizzeriaId, {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      previousStatus: order.status,
+      status: dto.status,
+      updatedAt: new Date(),
+    });
+
     // Auto-assign deliverer via queue when kitchen marks delivery order as ready
     if (dto.status === OrderStatus.ready && order.type === OrderType.delivery) {
       this.deliveryQueue.assignNextDeliverer(pizzeriaId, id).catch(() => {
@@ -949,6 +963,18 @@ export class OrdersService {
       this.deliveryQueue
         .tryAssignPendingDelivery(pizzeriaId, order.delivererId)
         .catch(() => {});
+    }
+
+    // KDS — RF20: adiciona itens à fila da cozinha quando pedido é aceito
+    if (dto.status === OrderStatus.accepted && order.requiresKitchen) {
+      this.prisma.db.orderItem
+        .findMany({ where: { orderId: id }, select: { productId: true, quantity: true, notes: true } })
+        .then((items) =>
+          this.kdsService.addItemsToQueue(pizzeriaId, id, order.orderNumber, items),
+        )
+        .catch(() => {
+          // Silencioso — KDS não deve derrubar a operação principal
+        });
     }
 
     return updatedOrder;
