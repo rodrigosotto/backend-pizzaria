@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, Min } from 'class-validator';
 import { PaymentMethod } from '@prisma/client';
 
@@ -9,14 +10,15 @@ export class RegisterPaymentDto {
     description: 'Forma de pagamento: cash | credit | debit | pix | voucher',
   })
   @IsEnum(PaymentMethod)
-  method: PaymentMethod;
+  paymentMethod!: PaymentMethod;
 
   @ApiPropertyOptional({
     example: 50.0,
-    description: 'Valor pago em dinheiro (apenas para cash) — usado para calcular o troco',
+    description: 'Valor recebido em dinheiro (apenas para cash) — usado para calcular o troco',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  amountPaid?: number;
+  amountReceived?: number;
 }

@@ -22,6 +22,7 @@ import { CouponsModule } from './coupons/coupons.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { DeliverersModule } from './deliverers/deliverers.module';
 import { DeliveryZonesModule } from './delivery-zones/delivery-zones.module';
+import { KdsModule } from './kds/kds.module';
 import { PrintersModule } from './printers/printers.module';
 import { TablesModule } from './tables/tables.module';
 
@@ -48,6 +49,7 @@ import { TablesModule } from './tables/tables.module';
     LoyaltyModule,
     DeliverersModule,
     DeliveryZonesModule,
+    KdsModule,
     PrintersModule,
     TablesModule,
   ],

@@ -8,6 +8,8 @@ import {
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
+import { KdsService } from '../kds/kds.service';
+import { OrdersGateway } from './orders.gateway';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -80,6 +82,8 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly deliveryQueue: DeliveryQueueService,
+    private readonly ordersGateway: OrdersGateway,
+    private readonly kdsService: KdsService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -477,6 +481,8 @@ export class OrdersService {
       after: { orderNumber: order.orderNumber, type: order.type, total: String(order.total) },
     });
 
+    this.ordersGateway.notifyNewOrder(pizzeriaId, order as unknown as Record<string, unknown>);
+
     return order;
   }
 
@@ -574,6 +580,8 @@ export class OrdersService {
       before: { subtotal: String(order.subtotal), total: String(order.total) },
       after: { subtotal: String(subtotal), total: String(total) },
     });
+
+    this.ordersGateway.notifyOrderUpdated(pizzeriaId, updated as unknown as Record<string, unknown>);
 
     return updated;
   }
@@ -933,6 +941,16 @@ export class OrdersService {
       after: { status: dto.status },
     });
 
+    this.ordersGateway.notifyOrderStatusChanged(pizzeriaId, updatedOrder as unknown as Record<string, unknown>);
+
+    if (dto.status === OrderStatus.accepted) {
+      this.kdsService.createItemsForOrder(pizzeriaId, id).catch(() => {});
+    }
+
+    if (dto.status === OrderStatus.cancelled) {
+      this.kdsService.removeItemsForOrder(pizzeriaId, id).catch(() => {});
+    }
+
     // Auto-assign deliverer via queue when kitchen marks delivery order as ready
     if (dto.status === OrderStatus.ready && order.type === OrderType.delivery) {
       this.deliveryQueue.assignNextDeliverer(pizzeriaId, id).catch(() => {
@@ -1022,18 +1040,18 @@ export class OrdersService {
       throw new BadRequestException('Este pedido já foi pago');
     }
 
-    if (dto.method === 'cash' && dto.amountPaid !== undefined) {
-      const paid = new Prisma.Decimal(dto.amountPaid);
+    if (dto.paymentMethod === 'cash' && dto.amountReceived !== undefined) {
+      const paid = new Prisma.Decimal(dto.amountReceived);
       if (paid.lessThan(order.total)) {
         throw new BadRequestException(
-          `Valor pago (R$ ${paid.toFixed(2)}) menor que o total do pedido (R$ ${order.total.toFixed(2)})`,
+          `Valor recebido (R$ ${paid.toFixed(2)}) menor que o total do pedido (R$ ${order.total.toFixed(2)})`,
         );
       }
     }
 
     const updated = await this.prisma.db.order.update({
       where: { id },
-      data: { paymentMethod: dto.method, paymentStatus: 'paid' },
+      data: { paymentMethod: dto.paymentMethod, paymentStatus: 'paid' },
     });
 
     await this.audit.log({
@@ -1042,7 +1060,7 @@ export class OrdersService {
       action: 'order.payment',
       entity: 'Order',
       entityId: id,
-      after: { method: dto.method, total: String(order.total) },
+      after: { method: dto.paymentMethod, total: String(order.total) },
     });
 
     return updated;
