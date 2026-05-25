@@ -82,8 +82,8 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly deliveryQueue: DeliveryQueueService,
-    private readonly ordersGateway: OrdersGateway,
     private readonly kdsService: KdsService,
+    private readonly ordersGateway: OrdersGateway,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -484,9 +484,7 @@ export class OrdersService {
       after: { orderNumber: order.orderNumber, type: order.type, total: String(order.total) },
     });
 
-    this.ordersGateway.notifyNewOrder(pizzeriaId, order as unknown as Record<string, unknown>);
-
-    this.emitStockAlerts(pizzeriaId, debitedStockIds).catch(() => {});
+    this.ordersGateway.notifyOrderCreated(pizzeriaId, order);
 
     return order;
   }
@@ -950,19 +948,13 @@ export class OrdersService {
       after: { status: dto.status },
     });
 
-    this.ordersGateway.notifyOrderStatusChanged(pizzeriaId, updatedOrder as unknown as Record<string, unknown>);
-
-    if (debitedStockIds.length > 0) {
-      this.emitStockAlerts(pizzeriaId, debitedStockIds).catch(() => {});
-    }
-
-    if (dto.status === OrderStatus.accepted) {
-      this.kdsService.createItemsForOrder(pizzeriaId, id).catch(() => {});
-    }
-
-    if (dto.status === OrderStatus.cancelled) {
-      this.kdsService.removeItemsForOrder(pizzeriaId, id).catch(() => {});
-    }
+    this.ordersGateway.notifyOrderStatusChanged(pizzeriaId, {
+      orderId: id,
+      orderNumber: order.orderNumber,
+      previousStatus: order.status,
+      status: dto.status,
+      updatedAt: new Date(),
+    });
 
     // Auto-assign deliverer via queue when kitchen marks delivery order as ready
     if (dto.status === OrderStatus.ready && order.type === OrderType.delivery) {
@@ -980,6 +972,24 @@ export class OrdersService {
       this.deliveryQueue
         .tryAssignPendingDelivery(pizzeriaId, order.delivererId)
         .catch(() => {});
+    }
+
+    // KDS — RF20: adiciona itens à fila da cozinha quando pedido é aceito
+    if (dto.status === OrderStatus.accepted && order.requiresKitchen) {
+      this.prisma.db.orderItem
+        .findMany({ where: { orderId: id }, select: { id: true, productId: true, quantity: true, notes: true } })
+        .then((items) =>
+          // Map DB items to KDS input shape (include orderItemId)
+          this.kdsService.addItemsToQueue(
+            pizzeriaId,
+            id,
+            order.orderNumber,
+            items.map((it) => ({ orderItemId: it.id, productId: it.productId, quantity: it.quantity, notes: it.notes })),
+          ),
+        )
+        .catch(() => {
+          // Silencioso — KDS não deve derrubar a operação principal
+        });
     }
 
     return updatedOrder;
@@ -1241,16 +1251,7 @@ export class OrdersService {
     });
     const alerts = items.filter((i) => i.quantity.lte(i.minQuantity));
     if (alerts.length > 0) {
-      this.ordersGateway.notifyStockAlert(
-        pizzeriaId,
-        alerts.map((i) => ({
-          id: i.id,
-          name: i.name,
-          quantity: i.quantity.toFixed(3),
-          minQuantity: i.minQuantity.toFixed(3),
-          unit: i.unit,
-        })),
-      );
+      // TODO: Implement stock alert notification
     }
   }
 }

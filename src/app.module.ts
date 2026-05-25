@@ -25,6 +25,8 @@ import { DeliveryZonesModule } from './delivery-zones/delivery-zones.module';
 import { KdsModule } from './kds/kds.module';
 import { PrintersModule } from './printers/printers.module';
 import { TablesModule } from './tables/tables.module';
+import { RecipesModule } from './recipes/recipes.module';
+import { KdsModule } from './kds/kds.module';
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { TablesModule } from './tables/tables.module';
     KdsModule,
     PrintersModule,
     TablesModule,
+    RecipesModule,
+    KdsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

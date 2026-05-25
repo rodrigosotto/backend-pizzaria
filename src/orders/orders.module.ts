@@ -9,6 +9,6 @@ import { KdsModule } from '../kds/kds.module';
   imports: [DeliverersModule, KdsModule],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersGateway],
-  exports: [OrdersService, OrdersGateway],
+  exports: [OrdersService],
 })
 export class OrdersModule {}

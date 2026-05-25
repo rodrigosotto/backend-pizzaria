@@ -145,6 +145,29 @@ Retorna dois lados independentes:
   }
 
   // =========================================================================
+  // DELIVERIES REPORT
+  // =========================================================================
+
+  @Get('deliveries')
+  @Roles(UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Métricas de entregas por entregador',
+    description: `Relatório de desempenho de entregadores no período:
+
+- **totals**: total de entregas, tempo médio (readyAt→deliveredAt em minutos), taxa no prazo e taxa de entrega arrecadada
+- **byDeliverer**: ranking de entregadores com entregas, tempo médio, taxa no prazo e receita gerada`,
+  })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'ISO 8601, ex: 2026-04-01' })
+  @ApiQuery({ name: 'dateTo',   required: false, description: 'ISO 8601, ex: 2026-04-30' })
+  @ApiResponse({ status: 200, description: 'Métricas de entregas por entregador' })
+  getDeliveriesReport(
+    @CurrentPizzeria() pizzeriaId: string,
+    @Query() filters: ReportFiltersDto,
+  ) {
+    return this.reportsService.getDeliveriesReport(pizzeriaId, filters);
+  }
+
+  // =========================================================================
   // CASH SESSIONS HISTORY
   // =========================================================================
 
