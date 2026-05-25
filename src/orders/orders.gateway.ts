@@ -31,7 +31,7 @@ import type { OrderStatus, OrderType } from '@prisma/client';
 })
 export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   private readonly logger = new Logger(OrdersGateway.name);
 

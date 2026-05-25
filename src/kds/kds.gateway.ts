@@ -33,7 +33,7 @@ import type { KdsItem } from '@prisma/client';
 })
 export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   private readonly logger = new Logger(KdsGateway.name);
 
