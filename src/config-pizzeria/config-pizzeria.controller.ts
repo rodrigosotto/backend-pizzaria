@@ -19,10 +19,7 @@ import { UpdatePizzeriaConfigDto } from './dto/update-pizzeria-config.dto';
 @ApiBearerAuth()
 @ApiHeader({ name: 'X-Pizzeria-Id', required: true })
 @RequiresPizzeria()
-@Roles(UserRole.owner, UserRole.admin)
 @Controller('config')
-/* This TypeScript class `ConfigPizzeriaController` handles retrieving and updating
-configurations for a pizzeria. */
 export class ConfigPizzeriaController {
   constructor(private readonly configService: ConfigPizzeriaService) {}
 
@@ -33,6 +30,7 @@ export class ConfigPizzeriaController {
   }
 
   @Patch()
+  @Roles(UserRole.owner, UserRole.admin)
   @ApiOperation({ summary: 'Atualizar configurações da pizzaria' })
   updateConfig(
     @CurrentPizzeria() pizzeriaId: string,

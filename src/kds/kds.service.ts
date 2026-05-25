@@ -20,6 +20,7 @@ const DONE_RETENTION_HOURS = 2;
 // ---------------------------------------------------------------------------
 
 interface OrderItemInput {
+  orderItemId: string;
   productId: string;
   quantity: number;
   notes?: string | null;
@@ -80,6 +81,7 @@ export class KdsService {
         pizzeriaId: pizzariaId,
         orderId,
         orderNumber,
+        orderItemId: i.orderItemId,
         productId: i.productId,
         productName: kitchenProductMap.get(i.productId)!,
         quantity: i.quantity,

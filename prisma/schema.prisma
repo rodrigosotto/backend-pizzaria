@@ -110,6 +110,12 @@ enum FlavorPriceRule {
   fixed    /// (C) Preço fixo do tamanho selecionado
 }
 
+enum KdsItemStatus {
+  pending
+  preparing
+  done
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
 // ─────────────────────────────────────────────────────────────────────────────
@@ -187,6 +193,7 @@ model Pizzeria {
   chatTemplates   ChatTemplate[]
   printers        Printer[]
   auditLogs       AuditLog[]
+  kdsItems        KdsItem[]
 
   @@map("pizzerias")
 }
@@ -272,6 +279,7 @@ model Product {
   orderItems OrderItem[]
   comboItems ComboItem[]
   recipes    ProductRecipe[]
+  kdsItems   KdsItem[]
 
   @@map("products")
 }
@@ -581,6 +589,7 @@ model Order {
   items           OrderItem[]
   parent          Order?           @relation("OrderChildren", fields: [parentOrderId], references: [id])
   children        Order[]          @relation("OrderChildren")
+  kdsItems        KdsItem[]
 
   @@unique([pizzeriaId, orderNumber])
   @@map("orders")
@@ -605,6 +614,7 @@ model OrderItem {
   product     Product      @relation(fields: [productId], references: [id])
   productSize ProductSize? @relation(fields: [productSizeId], references: [id])
   crust       Crust?       @relation(fields: [crustId], references: [id])
+  kdsItems    KdsItem[]
 
   @@map("order_items")
 }
@@ -771,6 +781,29 @@ model Printer {
   pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
 
   @@map("printers")
+}
+
+/// Itens na fila do Kitchen Display System — granularidade por item de pedido
+model KdsItem {
+  id          String        @id @default(uuid())
+  pizzeriaId  String        @map("pizzeria_id")
+  orderId     String        @map("order_id")
+  orderItemId String        @map("order_item_id")
+  productId   String        @map("product_id")
+  quantity    Int
+  notes       String?
+  status      KdsItemStatus @default(pending)
+  startedAt   DateTime?     @map("started_at")
+  completedAt DateTime?     @map("completed_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  pizzeria  Pizzeria  @relation(fields: [pizzeriaId], references: [id])
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@map("kds_items")
 }
 
 /// Log de auditoria de todas as ações sensíveis

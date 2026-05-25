@@ -30,6 +30,7 @@ import type { OrderStatus, OrderType } from '@prisma/client';
   namespace: '/orders',
 })
 export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  [x: string]: any;
   @WebSocketServer()
   server!: Server;
 

@@ -395,6 +395,8 @@ export class OrdersService {
 
     const total = subtotal.minus(discount).plus(deliveryFee).plus(serviceFee);
 
+    const debitedStockIds: string[] = [];
+
     const order = await this.prisma.db.$transaction(async (tx) => {
       const lastOrder = await tx.order.findFirst({
         where: { pizzeriaId },
@@ -466,6 +468,7 @@ export class OrdersService {
             where: { id: recipe.stockItemId },
             data: { quantity: { decrement: consumed } },
           });
+          debitedStockIds.push(recipe.stockItemId);
         }
       }
 
@@ -580,6 +583,8 @@ export class OrdersService {
       before: { subtotal: String(order.subtotal), total: String(order.total) },
       after: { subtotal: String(subtotal), total: String(total) },
     });
+
+    this.ordersGateway.notifyOrderUpdated(pizzeriaId, updated as unknown as Record<string, unknown>);
 
     return updated;
   }
@@ -873,6 +878,8 @@ export class OrdersService {
     if (dto.status === OrderStatus.done) timestamps.deliveredAt = new Date();
     if (dto.status === OrderStatus.cancelled) timestamps.cancelledAt = new Date();
 
+    const debitedStockIds: string[] = [];
+
     const updatedOrder = await this.prisma.db.$transaction(async (tx) => {
       const updated = await tx.order.update({
         where: { id },
@@ -914,6 +921,8 @@ export class OrdersService {
               where: { id: recipe.stockItemId },
               data: { quantity: { decrement: consumed } },
             });
+
+            debitedStockIds.push(recipe.stockItemId);
           }
         }
       }
@@ -968,9 +977,15 @@ export class OrdersService {
     // KDS — RF20: adiciona itens à fila da cozinha quando pedido é aceito
     if (dto.status === OrderStatus.accepted && order.requiresKitchen) {
       this.prisma.db.orderItem
-        .findMany({ where: { orderId: id }, select: { productId: true, quantity: true, notes: true } })
+        .findMany({ where: { orderId: id }, select: { id: true, productId: true, quantity: true, notes: true } })
         .then((items) =>
-          this.kdsService.addItemsToQueue(pizzeriaId, id, order.orderNumber, items),
+          // Map DB items to KDS input shape (include orderItemId)
+          this.kdsService.addItemsToQueue(
+            pizzeriaId,
+            id,
+            order.orderNumber,
+            items.map((it) => ({ orderItemId: it.id, productId: it.productId, quantity: it.quantity, notes: it.notes })),
+          ),
         )
         .catch(() => {
           // Silencioso — KDS não deve derrubar a operação principal
@@ -1048,18 +1063,18 @@ export class OrdersService {
       throw new BadRequestException('Este pedido já foi pago');
     }
 
-    if (dto.method === 'cash' && dto.amountPaid !== undefined) {
-      const paid = new Prisma.Decimal(dto.amountPaid);
+    if (dto.paymentMethod === 'cash' && dto.amountReceived !== undefined) {
+      const paid = new Prisma.Decimal(dto.amountReceived);
       if (paid.lessThan(order.total)) {
         throw new BadRequestException(
-          `Valor pago (R$ ${paid.toFixed(2)}) menor que o total do pedido (R$ ${order.total.toFixed(2)})`,
+          `Valor recebido (R$ ${paid.toFixed(2)}) menor que o total do pedido (R$ ${order.total.toFixed(2)})`,
         );
       }
     }
 
     const updated = await this.prisma.db.order.update({
       where: { id },
-      data: { paymentMethod: dto.method, paymentStatus: 'paid' },
+      data: { paymentMethod: dto.paymentMethod, paymentStatus: 'paid' },
     });
 
     await this.audit.log({
@@ -1068,7 +1083,7 @@ export class OrdersService {
       action: 'order.payment',
       entity: 'Order',
       entityId: id,
-      after: { method: dto.method, total: String(order.total) },
+      after: { method: dto.paymentMethod, total: String(order.total) },
     });
 
     return updated;
@@ -1226,5 +1241,17 @@ export class OrdersService {
     ]);
 
     return { deliverer, active, recent };
+  }
+
+  private async emitStockAlerts(pizzeriaId: string, stockItemIds: string[]) {
+    if (stockItemIds.length === 0) return;
+    const items = await this.prisma.db.stockItem.findMany({
+      where: { id: { in: stockItemIds } },
+      select: { id: true, name: true, quantity: true, minQuantity: true, unit: true },
+    });
+    const alerts = items.filter((i) => i.quantity.lte(i.minQuantity));
+    if (alerts.length > 0) {
+      // TODO: Implement stock alert notification
+    }
   }
 }
