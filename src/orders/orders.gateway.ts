@@ -15,7 +15,7 @@ import { Server, Socket } from 'socket.io';
 })
 export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   handleConnection(client: Socket) {
     console.log(`[WS /orders] connected: ${client.id}`);
@@ -45,5 +45,12 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   notifyOrderStatusChanged(pizzeriaId: string, order: Record<string, unknown>) {
     this.server.to(`pizzaria:${pizzeriaId}`).emit('order:status:changed', order);
+  }
+
+  notifyStockAlert(
+    pizzeriaId: string,
+    items: Array<{ id: string; name: string; quantity: string; minQuantity: string; unit: string }>,
+  ) {
+    this.server.to(`pizzaria:${pizzeriaId}`).emit('stock:alert', { items });
   }
 }

@@ -395,6 +395,8 @@ export class OrdersService {
 
     const total = subtotal.minus(discount).plus(deliveryFee).plus(serviceFee);
 
+    const debitedStockIds: string[] = [];
+
     const order = await this.prisma.db.$transaction(async (tx) => {
       const lastOrder = await tx.order.findFirst({
         where: { pizzeriaId },
@@ -466,6 +468,7 @@ export class OrdersService {
             where: { id: recipe.stockItemId },
             data: { quantity: { decrement: consumed } },
           });
+          debitedStockIds.push(recipe.stockItemId);
         }
       }
 
@@ -482,6 +485,8 @@ export class OrdersService {
     });
 
     this.ordersGateway.notifyNewOrder(pizzeriaId, order as unknown as Record<string, unknown>);
+
+    this.emitStockAlerts(pizzeriaId, debitedStockIds).catch(() => {});
 
     return order;
   }
@@ -875,6 +880,8 @@ export class OrdersService {
     if (dto.status === OrderStatus.done) timestamps.deliveredAt = new Date();
     if (dto.status === OrderStatus.cancelled) timestamps.cancelledAt = new Date();
 
+    const debitedStockIds: string[] = [];
+
     const updatedOrder = await this.prisma.db.$transaction(async (tx) => {
       const updated = await tx.order.update({
         where: { id },
@@ -916,6 +923,8 @@ export class OrdersService {
               where: { id: recipe.stockItemId },
               data: { quantity: { decrement: consumed } },
             });
+
+            debitedStockIds.push(recipe.stockItemId);
           }
         }
       }
@@ -942,6 +951,10 @@ export class OrdersService {
     });
 
     this.ordersGateway.notifyOrderStatusChanged(pizzeriaId, updatedOrder as unknown as Record<string, unknown>);
+
+    if (debitedStockIds.length > 0) {
+      this.emitStockAlerts(pizzeriaId, debitedStockIds).catch(() => {});
+    }
 
     if (dto.status === OrderStatus.accepted) {
       this.kdsService.createItemsForOrder(pizzeriaId, id).catch(() => {});
@@ -1218,5 +1231,26 @@ export class OrdersService {
     ]);
 
     return { deliverer, active, recent };
+  }
+
+  private async emitStockAlerts(pizzeriaId: string, stockItemIds: string[]) {
+    if (stockItemIds.length === 0) return;
+    const items = await this.prisma.db.stockItem.findMany({
+      where: { id: { in: stockItemIds } },
+      select: { id: true, name: true, quantity: true, minQuantity: true, unit: true },
+    });
+    const alerts = items.filter((i) => i.quantity.lte(i.minQuantity));
+    if (alerts.length > 0) {
+      this.ordersGateway.notifyStockAlert(
+        pizzeriaId,
+        alerts.map((i) => ({
+          id: i.id,
+          name: i.name,
+          quantity: i.quantity.toFixed(3),
+          minQuantity: i.minQuantity.toFixed(3),
+          unit: i.unit,
+        })),
+      );
+    }
   }
 }
