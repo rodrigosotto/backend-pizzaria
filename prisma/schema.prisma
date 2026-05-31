@@ -279,7 +279,6 @@ model Product {
   orderItems OrderItem[]
   comboItems ComboItem[]
   recipes    ProductRecipe[]
-  kdsItems   KdsItem[]
 
   @@map("products")
 }
@@ -614,7 +613,6 @@ model OrderItem {
   product     Product      @relation(fields: [productId], references: [id])
   productSize ProductSize? @relation(fields: [productSizeId], references: [id])
   crust       Crust?       @relation(fields: [crustId], references: [id])
-  kdsItems    KdsItem[]
 
   @@map("order_items")
 }
@@ -783,28 +781,6 @@ model Printer {
   @@map("printers")
 }
 
-/// Itens na fila do Kitchen Display System — granularidade por item de pedido
-model KdsItem {
-  id          String        @id @default(uuid())
-  pizzeriaId  String        @map("pizzeria_id")
-  orderId     String        @map("order_id")
-  orderItemId String        @map("order_item_id")
-  productId   String        @map("product_id")
-  quantity    Int
-  notes       String?
-  status      KdsItemStatus @default(pending)
-  startedAt   DateTime?     @map("started_at")
-  completedAt DateTime?     @map("completed_at")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
-
-  pizzeria  Pizzeria  @relation(fields: [pizzeriaId], references: [id])
-  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  product   Product   @relation(fields: [productId], references: [id])
-
-  @@map("kds_items")
-}
 
 /// Log de auditoria de todas as ações sensíveis
 model AuditLog {
@@ -826,17 +802,8 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// KDS — Kitchen Display System (RF20–RF27)
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum KdsItemStatus {
-  pending
-  preparing
-  done
-}
-
-/// Itens na fila do Kitchen Display System — criados ao aceitar um pedido
+/// Itens na fila do Kitchen Display System — criados ao aceitar um pedido.
+/// Modelo denormalizado: productName e orderNumber copiados na criação para evitar joins em tempo real.
 model KdsItem {
   id          String        @id @default(uuid())
   pizzeriaId  String        @map("pizzeria_id")
@@ -848,8 +815,11 @@ model KdsItem {
   notes       String?
   status      KdsItemStatus @default(pending)
   createdAt   DateTime      @default(now()) @map("created_at")
-  startedAt   DateTime?     @map("started_at")   // quando passou para PREPARING
-  completedAt DateTime?     @map("completed_at") // quando passou para DONE
+  startedAt   DateTime?     @map("started_at")
+  completedAt DateTime?     @map("completed_at")
+
+  pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([pizzeriaId, status])
   @@index([pizzeriaId, createdAt])
