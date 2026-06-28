@@ -26,6 +26,7 @@ import { KdsModule } from './kds/kds.module';
 import { PrintersModule } from './printers/printers.module';
 import { TablesModule } from './tables/tables.module';
 import { RecipesModule } from './recipes/recipes.module';
+import { CepModule } from './shared/cep/cep.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { RecipesModule } from './recipes/recipes.module';
     PrintersModule,
     TablesModule,
     RecipesModule,
+    CepModule,
   ],
   controllers: [AppController],
   providers: [AppService],

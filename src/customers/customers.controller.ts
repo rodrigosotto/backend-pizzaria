@@ -9,7 +9,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import {
   ApiBearerAuth,
   ApiHeader,
@@ -69,6 +71,26 @@ export class CustomersController {
   @ApiResponse({ status: 404, description: 'Nenhum cliente com este telefone nesta pizzaria' })
   findByPhone(@Param('phone') phone: string, @CurrentPizzeria() pizzeriaId: string) {
     return this.customersService.findByPhone(pizzeriaId, phone);
+  }
+
+  @Get('export')
+  @Roles(UserRole.owner, UserRole.admin)
+  @ApiOperation({
+    summary: 'Exportar lista de clientes em CSV (RF55)',
+    description: 'Retorna arquivo CSV com nome, telefone, CPF, email, selos e data de cadastro. Use `?search=` para filtrar.',
+  })
+  @ApiQuery({ name: 'search', required: false })
+  async exportCsv(
+    @CurrentPizzeria() pizzeriaId: string,
+    @Res() reply: FastifyReply,
+    @Query('search') search?: string,
+  ) {
+    const csv = await this.customersService.exportCsv(pizzeriaId, search);
+    const filename = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send('\uFEFF' + csv); // BOM para UTF-8 no Excel
   }
 
   @Get(':id')

@@ -74,4 +74,17 @@ export class LoyaltyController {
   ) {
     return this.loyaltyService.remove(pizzeriaId, id, user.sub);
   }
+
+  @Get('customer/:customerId/status')
+  @ApiOperation({
+    summary: 'Status de selos do cliente (RF88)',
+    description:
+      'Retorna selos acumulados, validade e quanto falta para a próxima recompensa. Expira selos automaticamente se validityDays configurado.',
+  })
+  getCustomerStatus(
+    @CurrentPizzeria() pizzeriaId: string,
+    @Param('customerId') customerId: string,
+  ) {
+    return this.loyaltyService.getCustomerLoyaltyStatus(pizzeriaId, customerId);
+  }
 }
