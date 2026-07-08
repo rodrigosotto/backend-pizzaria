@@ -10,6 +10,7 @@ import { AuditService } from '../modules/audit/audit.service';
 import { DeliveryQueueService } from '../deliverers/delivery-queue.service';
 import { KdsService } from '../kds/kds.service';
 import { OrdersGateway } from './orders.gateway';
+import { StockGateway } from '../estoque/stock.gateway';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
@@ -84,6 +85,7 @@ export class OrdersService {
     private readonly deliveryQueue: DeliveryQueueService,
     private readonly kdsService: KdsService,
     private readonly ordersGateway: OrdersGateway,
+    private readonly stockGateway: StockGateway,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -147,6 +149,35 @@ export class OrdersService {
     // Suporta janelas que cruzam meia-noite (ex: 22:00–02:00)
     if (from <= to) return current >= from && current <= to;
     return current >= from || current <= to;
+  }
+
+  // -------------------------------------------------------------------------
+  // RN09 — Validar estoque disponível antes de debitar
+  // -------------------------------------------------------------------------
+
+  private async validateStockAvailability(
+    tx: Prisma.TransactionClient,
+    items: Array<{ productId: string | null; quantity: number }>,
+  ) {
+    for (const item of items) {
+      if (!item.productId) continue;
+
+      const recipes = await tx.productRecipe.findMany({
+        where: { productId: item.productId },
+        include: {
+          stockItem: { select: { id: true, name: true, quantity: true } },
+        },
+      });
+
+      for (const recipe of recipes) {
+        const needed = recipe.quantity.mul(item.quantity);
+        if (recipe.stockItem.quantity.lessThan(needed)) {
+          throw new UnprocessableEntityException(
+            `Estoque insuficiente para "${recipe.stockItem.name}": disponível ${Number(recipe.stockItem.quantity).toFixed(3)}, necessário ${Number(needed).toFixed(3)}`,
+          );
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -267,6 +298,7 @@ export class OrdersService {
         acceptingOrders: true,
         businessHours: true,
         requireOpenCashier: true,
+        freeDeliveryAbove: true,
       },
     });
 
@@ -382,7 +414,39 @@ export class OrdersService {
       couponId = coupon.id;
     }
 
-    const deliveryFee = new Prisma.Decimal(0);
+    // RF44/RF45 — calcular taxa de entrega por zona de bairro (RN12)
+    let deliveryFee = new Prisma.Decimal(0);
+    if (dto.type === OrderType.delivery && dto.deliveryAddressId) {
+      const address = await this.prisma.db.customerAddress.findUnique({
+        where: { id: dto.deliveryAddressId },
+        select: { neighborhood: true },
+      });
+
+      if (address) {
+        const zone = await this.prisma.db.deliveryZone.findFirst({
+          where: {
+            pizzeriaId,
+            isActive: true,
+            type: 'neighborhood',
+            name: { equals: address.neighborhood, mode: 'insensitive' },
+          },
+          select: { fee: true },
+        });
+
+        if (!zone) {
+          throw new BadRequestException(
+            `Entrega não disponível para o bairro "${address.neighborhood}". Verifique a área de cobertura. (RN12)`,
+          );
+        }
+
+        deliveryFee = zone.fee;
+      }
+
+      // RF45 — frete grátis acima de valor configurado
+      if (config?.freeDeliveryAbove && subtotal.greaterThanOrEqualTo(config.freeDeliveryAbove)) {
+        deliveryFee = new Prisma.Decimal(0);
+      }
+    }
 
     // RN10 — taxa de serviço
     let serviceFee = new Prisma.Decimal(0);
@@ -449,7 +513,12 @@ export class OrdersService {
         });
       }
 
-      // RF76 — Baixa automática de estoque na criação (pedido já entra como aceito)
+      // RN09/RF76 — validar e debitar estoque (pedido já entra como aceito)
+      await this.validateStockAvailability(
+        tx,
+        newOrder.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      );
+
       for (const item of newOrder.items) {
         if (!item.productId) continue;
         const recipes = await tx.productRecipe.findMany({ where: { productId: item.productId } });
@@ -485,6 +554,7 @@ export class OrdersService {
     });
 
     this.ordersGateway.notifyOrderCreated(pizzeriaId, order);
+    void this.emitStockAlerts(pizzeriaId, debitedStockIds);
 
     return order;
   }
@@ -890,12 +960,14 @@ export class OrdersService {
         },
       });
 
-      // RF76 — Baixa automática de estoque ao aceitar pedido
+      // RN09/RF76 — validar e debitar estoque ao aceitar pedido
       if (dto.status === OrderStatus.accepted) {
         const items = await tx.orderItem.findMany({
           where: { orderId: id },
           select: { productId: true, quantity: true },
         });
+
+        await this.validateStockAvailability(tx, items);
 
         for (const item of items) {
           if (!item.productId) continue;
@@ -927,11 +999,37 @@ export class OrdersService {
         }
       }
 
-      // RF52 — selos de fidelidade ao finalizar
+      // RF52/RF88 — selos de fidelidade ao finalizar (com verificação de validade)
       if (dto.status === OrderStatus.done && order.customerId) {
+        const program = await tx.loyaltyProgram.findFirst({
+          where: { pizzeriaId, isActive: true },
+          select: { validityDays: true },
+        });
+
+        let resetStamps = false;
+        if (program?.validityDays) {
+          // Verificar se o último pedido finalizado (exceto o atual) está dentro da validade
+          const lastDone = await tx.order.findFirst({
+            where: {
+              pizzeriaId,
+              customerId: order.customerId,
+              status: OrderStatus.done,
+              id: { not: id },
+            },
+            orderBy: { deliveredAt: 'desc' },
+            select: { deliveredAt: true },
+          });
+
+          if (lastDone?.deliveredAt) {
+            const expiresAt = new Date(lastDone.deliveredAt);
+            expiresAt.setDate(expiresAt.getDate() + program.validityDays);
+            resetStamps = new Date() > expiresAt;
+          }
+        }
+
         await tx.customer.update({
           where: { id: order.customerId },
-          data: { loyaltyStamps: { increment: 1 } },
+          data: { loyaltyStamps: resetStamps ? 1 : { increment: 1 } },
         });
       }
 
@@ -955,6 +1053,7 @@ export class OrdersService {
       status: dto.status,
       updatedAt: new Date(),
     });
+    void this.emitStockAlerts(pizzeriaId, debitedStockIds);
 
     // Auto-assign deliverer via queue when kitchen marks delivery order as ready
     if (dto.status === OrderStatus.ready && order.type === OrderType.delivery) {
@@ -1024,13 +1123,39 @@ export class OrdersService {
       }
     }
 
-    const updated = await this.prisma.db.order.update({
-      where: { id },
-      data: {
-        status: OrderStatus.cancelled,
-        cancelReason: dto.reason,
-        cancelledAt: new Date(),
-      },
+    const updated = await this.prisma.db.$transaction(async (tx) => {
+      const result = await tx.order.update({
+        where: { id },
+        data: {
+          status: OrderStatus.cancelled,
+          cancelReason: dto.reason,
+          cancelledAt: new Date(),
+        },
+      });
+
+      // RN05 — reverter baixa automática de estoque ao cancelar
+      const stockMovements = await tx.stockMovement.findMany({
+        where: { orderId: id, type: 'auto_debit' },
+      });
+
+      for (const movement of stockMovements) {
+        await tx.stockMovement.create({
+          data: {
+            stockItemId: movement.stockItemId,
+            type: 'adjustment',
+            quantity: movement.quantity,
+            reason: `Estorno — cancelamento pedido #${order.orderNumber ?? id}`,
+            orderId: id,
+            createdBy: userId,
+          },
+        });
+        await tx.stockItem.update({
+          where: { id: movement.stockItemId },
+          data: { quantity: { increment: movement.quantity } },
+        });
+      }
+
+      return result;
     });
 
     await this.audit.log({
@@ -1251,7 +1376,17 @@ export class OrdersService {
     });
     const alerts = items.filter((i) => i.quantity.lte(i.minQuantity));
     if (alerts.length > 0) {
-      // TODO: Implement stock alert notification
+      // RN04 — emitir evento WebSocket stock:alert para todos conectados na sala da pizzaria
+      this.stockGateway.notifyStockAlert(
+        pizzeriaId,
+        alerts.map((a) => ({
+          id: a.id,
+          name: a.name,
+          quantity: Number(a.quantity),
+          minQuantity: Number(a.minQuantity),
+          unit: a.unit,
+        })),
+      );
     }
   }
 }

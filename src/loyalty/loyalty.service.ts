@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { CreateLoyaltyDto } from './dto/create-loyalty.dto';
@@ -111,5 +112,81 @@ export class LoyaltyService {
       entityId: id,
       before: { name: program.name },
     });
+  }
+
+  // RF88 — Status de selos do cliente com verificação de validade
+  async getCustomerLoyaltyStatus(pizzeriaId: string, customerId: string) {
+    const customer = await this.prisma.db.customer.findFirst({
+      where: { id: customerId, pizzeriaId },
+      select: { id: true, name: true, loyaltyStamps: true },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+
+    const program = await this.prisma.db.loyaltyProgram.findFirst({
+      where: { pizzeriaId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!program) {
+      return {
+        customerId,
+        customerName: customer.name,
+        stamps: customer.loyaltyStamps,
+        program: null,
+        stampsValid: false,
+        stampsExpiredAt: null,
+        stampsToGoal: null,
+      };
+    }
+
+    // Determinar validade: data do último pedido finalizado pelo cliente
+    let stampsValid = true;
+    let lastStampEarnedAt: Date | null = null;
+    let expiresAt: Date | null = null;
+
+    if (program.validityDays && customer.loyaltyStamps > 0) {
+      const lastDoneOrder = await this.prisma.db.order.findFirst({
+        where: { pizzeriaId, customerId, status: OrderStatus.done },
+        orderBy: { deliveredAt: 'desc' },
+        select: { deliveredAt: true },
+      });
+
+      lastStampEarnedAt = lastDoneOrder?.deliveredAt ?? null;
+
+      if (lastStampEarnedAt) {
+        expiresAt = new Date(lastStampEarnedAt);
+        expiresAt.setDate(expiresAt.getDate() + program.validityDays);
+        stampsValid = new Date() < expiresAt;
+
+        // Lazy expiry: zerar selos expirados automaticamente
+        if (!stampsValid) {
+          await this.prisma.db.customer.update({
+            where: { id: customerId },
+            data: { loyaltyStamps: 0 },
+          });
+          customer.loyaltyStamps = 0;
+        }
+      }
+    }
+
+    const stampsToGoal = Math.max(0, program.stampsGoal - customer.loyaltyStamps);
+
+    return {
+      customerId,
+      customerName: customer.name,
+      stamps: customer.loyaltyStamps,
+      stampsValid,
+      lastStampEarnedAt,
+      expiresAt,
+      program: {
+        id: program.id,
+        name: program.name,
+        stampsGoal: program.stampsGoal,
+        reward: program.reward,
+        validityDays: program.validityDays,
+      },
+      stampsToGoal,
+      rewardReached: customer.loyaltyStamps >= program.stampsGoal,
+    };
   }
 }

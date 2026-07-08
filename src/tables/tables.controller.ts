@@ -181,4 +181,36 @@ export class TablesController {
   ) {
     return this.tablesService.cancelReservation(pizzeriaId, id, user.sub);
   }
+
+  @Get(':tableId/sessions/:sessionId/split')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @ApiOperation({
+    summary: 'Divisão igualitária de conta por número de pessoas (RF40)',
+    description: 'Retorna o total da sessão dividido igualmente entre N pessoas.',
+  })
+  splitEvenly(
+    @CurrentPizzeria() pizzeriaId: string,
+    @Param('tableId') tableId: string,
+    @Param('sessionId') sessionId: string,
+    @Query('persons') persons: string,
+  ) {
+    const n = parseInt(persons, 10);
+    return this.tablesService.splitEvenly(pizzeriaId, tableId, sessionId, n);
+  }
+
+  @Post(':tableId/sessions/:sessionId/split/by-item')
+  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @ApiOperation({
+    summary: 'Divisão de conta por itens selecionados por pessoa (RF40)',
+    description: 'Cada pessoa informa quais order_item_ids são seus. Retorna subtotal por pessoa.',
+  })
+  splitByItems(
+    @CurrentPizzeria() pizzeriaId: string,
+    @Param('tableId') tableId: string,
+    @Param('sessionId') sessionId: string,
+    @Body() body: { persons: Array<{ label: string; orderItemIds: string[] }> },
+  ) {
+    return this.tablesService.splitByItems(pizzeriaId, tableId, sessionId, body.persons);
+  }
+
 }

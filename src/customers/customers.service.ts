@@ -302,4 +302,47 @@ export class CustomersService {
     if (!address) throw new NotFoundException('Endereco nao encontrado');
     return address;
   }
+
+  // RF55 — Exportação CSV de clientes
+  async exportCsv(pizzeriaId: string, search?: string): Promise<string> {
+    const customers = await this.prisma.db.customer.findMany({
+      where: {
+        pizzeriaId,
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search } },
+                { cpf: { contains: search } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        name: true,
+        phone: true,
+        cpf: true,
+        email: true,
+        loyaltyStamps: true,
+        isBlacklisted: true,
+        createdAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const header = 'Nome,Telefone,CPF,Email,Selos de Fidelidade,Bloqueado,Data de Cadastro';
+    const rows = customers.map((c) =>
+      [
+        `"${c.name.replace(/"/g, '""')}"`,
+        c.phone,
+        c.cpf ?? '',
+        c.email ?? '',
+        c.loyaltyStamps,
+        c.isBlacklisted ? 'Sim' : 'Não',
+        c.createdAt.toISOString().split('T')[0],
+      ].join(','),
+    );
+
+    return [header, ...rows].join('\n');
+  }
 }

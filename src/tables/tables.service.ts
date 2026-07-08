@@ -423,4 +423,103 @@ export class TablesService {
       before: { customerName: reservation.customerName, tableNumber: reservation.table.number },
     });
   }
+
+  // ── RF40 — Divisão de conta ────────────────────────────────────────────────
+
+  /** Divisão igualitária por número de pessoas */
+  async splitEvenly(
+    pizzeriaId: string,
+    tableId: string,
+    sessionId: string,
+    persons: number,
+  ) {
+    if (persons < 2) throw new BadRequestException('Número mínimo de pessoas para divisão é 2');
+
+    const session = await this.findSessionOrFail(pizzeriaId, tableId, sessionId);
+
+    const orders = await this.prisma.db.order.findMany({
+      where: { tableSessionId: sessionId, status: { notIn: ['cancelled'] } },
+      select: {
+        id: true,
+        orderNumber: true,
+        total: true,
+      },
+    });
+
+    const grandTotal = orders.reduce((sum, o) => sum + Number(o.total), 0);
+
+    return {
+      tableId,
+      sessionId,
+      openedAt: session.openedAt,
+      persons,
+      grandTotal: Number(grandTotal.toFixed(2)),
+      perPerson: Number((grandTotal / persons).toFixed(2)),
+      orders: orders.map((o) => ({
+        orderId: o.id,
+        orderNumber: o.orderNumber,
+        total: Number(o.total),
+      })),
+    };
+  }
+
+  /** Divisão por itens selecionados por pessoa */
+  async splitByItems(
+    pizzeriaId: string,
+    tableId: string,
+    sessionId: string,
+    persons: Array<{ label: string; orderItemIds: string[] }>,
+  ) {
+    await this.findSessionOrFail(pizzeriaId, tableId, sessionId);
+
+    if (persons.length < 2) throw new BadRequestException('Informe pelo menos 2 pessoas para divisão');
+
+    const allItems = await this.prisma.db.orderItem.findMany({
+      where: {
+        order: { tableSessionId: sessionId, status: { notIn: ['cancelled'] } },
+        cancelledAt: null,
+      },
+      select: { id: true, subtotal: true },
+    });
+
+    const allItemIds = new Set(allItems.map((i) => i.id));
+    const assignedIds = persons.flatMap((p) => p.orderItemIds);
+    const invalidIds = assignedIds.filter((id) => !allItemIds.has(id));
+
+    if (invalidIds.length) {
+      throw new BadRequestException(
+        `Os seguintes itens não pertencem a esta sessão: ${invalidIds.join(', ')}`,
+      );
+    }
+
+    const itemMap = new Map(allItems.map((i) => [i.id, i]));
+
+    const breakdown = persons.map((person) => {
+      const items = person.orderItemIds.map((id) => itemMap.get(id)!).filter(Boolean);
+      const subtotal = items.reduce((sum, i) => sum + Number(i.subtotal), 0);
+      return {
+        label: person.label,
+        itemCount: items.length,
+        subtotal: Number(subtotal.toFixed(2)),
+        orderItemIds: person.orderItemIds,
+      };
+    });
+
+    const totalAssigned = breakdown.reduce((sum, p) => sum + p.subtotal, 0);
+
+    return {
+      tableId,
+      sessionId,
+      persons: breakdown,
+      totalAssigned: Number(totalAssigned.toFixed(2)),
+    };
+  }
+
+  private async findSessionOrFail(pizzeriaId: string, tableId: string, sessionId: string) {
+    const session = await this.prisma.db.tableSession.findFirst({
+      where: { id: sessionId, tableId, table: { pizzeriaId } },
+    });
+    if (!session) throw new NotFoundException('Sessão não encontrada');
+    return session;
+  }
 }
