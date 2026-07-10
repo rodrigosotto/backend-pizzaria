@@ -25,7 +25,7 @@ import type { JwtPayload } from './pizzeria.service';
 import { PizzeriaService } from './pizzeria.service';
 import { CreatePizzeriaDto } from './dto/create-pizzeria.dto';
 import { UpdatePizzeriaDto } from './dto/update-pizzeria.dto';
-import { InviteUserDto } from './dto/invite-user.dto';
+import { RegisterPizzeriaUserDto } from './dto/register-pizzeria-user.dto';
 import { UpdatePizzeriaUserDto } from './dto/update-pizzeria-user.dto';
 
 @ApiTags('Pizzerias')
@@ -108,16 +108,15 @@ export class PizzeriaController {
 
   @Post(':id/users')
   @Roles(UserRole.owner, UserRole.admin)
-  @ApiOperation({ summary: 'Convidar usuário para a pizzaria' })
-  @ApiResponse({ status: 201, description: 'Usuário convidado com sucesso' })
-  @ApiResponse({ status: 404, description: 'Usuário não encontrado' })
+  @ApiOperation({ summary: 'Cadastrar usuário na pizzaria' })
+  @ApiResponse({ status: 201, description: 'Usuário cadastrado com sucesso' })
   @ApiResponse({ status: 409, description: 'Usuário já tem vínculo ativo' })
-  inviteUser(
+  registerUser(
     @Param('id') id: string,
-    @Body() dto: InviteUserDto,
+    @Body() dto: RegisterPizzeriaUserDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.pizzeriaService.inviteUser(id, dto, user);
+    return this.pizzeriaService.registerUser(id, dto, user);
   }
 
   @Patch(':id/users/:userId')

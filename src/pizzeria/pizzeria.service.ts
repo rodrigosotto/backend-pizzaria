@@ -2,6 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, PizzeriaUserRole, UserRole } from '@prisma/client';
@@ -10,7 +12,7 @@ import { AuditService } from '../modules/audit/audit.service';
 import { SupabaseStorageService } from '../infra/supabase/supabase-storage.service';
 import { CreatePizzeriaDto } from './dto/create-pizzeria.dto';
 import { UpdatePizzeriaDto } from './dto/update-pizzeria.dto';
-import { InviteUserDto } from './dto/invite-user.dto';
+import { RegisterPizzeriaUserDto } from './dto/register-pizzeria-user.dto';
 import { UpdatePizzeriaUserDto } from './dto/update-pizzeria-user.dto';
 import * as path from 'path';
 
@@ -38,6 +40,8 @@ export interface JwtPayload {
 
 @Injectable()
 export class PizzeriaService {
+  private readonly logger = new Logger(PizzeriaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -262,17 +266,65 @@ export class PizzeriaService {
     });
   }
 
-  async inviteUser(pizzeriaId: string, dto: InviteUserDto, user: JwtPayload) {
+  async registerUser(
+    pizzeriaId: string,
+    dto: RegisterPizzeriaUserDto,
+    user: JwtPayload,
+  ) {
     await this.assertAccess(pizzeriaId, user.sub);
 
-    const target = await this.prisma.db.user.findUnique({
+    let target = await this.prisma.db.user.findUnique({
       where: { email: dto.email },
       select: { id: true, name: true, email: true },
     });
 
-    if (!target)
-      throw new NotFoundException('Usuário não encontrado com este e-mail');
+    if (!target) {
+      // User doesn't exist — create via stored procedure register_auth_user()
+      // which inserts into auth.users + auth.identities (Supabase Auth).
+      // The trigger handle_new_user() auto-creates the public.users entry.
+      const result = await this.prisma.db.$queryRaw<
+        { register_auth_user: string }[]
+      >`
+        SELECT public.register_auth_user(
+          ${dto.email},
+          ${dto.password},
+          ${dto.name},
+          ${dto.phone ?? null},
+          ${dto.role}
+        ) AS register_auth_user
+      `;
 
+      const newUserId = result[0]?.register_auth_user;
+      if (!newUserId) {
+        throw new InternalServerErrorException(
+          'Erro ao criar usuário no sistema de autenticação',
+        );
+      }
+
+      // The trigger created the public.users row; update it to ensure correct role
+      target = await this.prisma.db.user.update({
+        where: { id: newUserId },
+        data: {
+          role: UserRole[dto.role] ?? UserRole.atendente,
+        },
+        select: { id: true, name: true, email: true },
+      });
+
+      await this.audit.log({
+        action: 'USER_REGISTERED',
+        entity: 'User',
+        entityId: target.id,
+        userId: user.sub,
+        pizzeriaId,
+        after: {
+          name: dto.name,
+          email: dto.email,
+          role: dto.role,
+        } as Record<string, unknown>,
+      });
+    }
+
+    // Check for existing active link
     const existing = await this.prisma.db.userPizzeriaRole.findUnique({
       where: { userId_pizzeriaId: { userId: target.id, pizzeriaId } },
     });
@@ -290,7 +342,11 @@ export class PizzeriaService {
       select: {
         id: true,
         role: true,
-        user: { select: { id: true, name: true, email: true } },
+        invitedAt: true,
+        acceptedAt: true,
+        user: {
+          select: { id: true, name: true, email: true, avatarUrl: true },
+        },
       },
     });
 
