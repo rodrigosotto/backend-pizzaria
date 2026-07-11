@@ -1,20 +1,30 @@
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { INestApplication } from '@nestjs/common';
-import { ServerOptions } from 'socket.io';
+import { Server, ServerOptions } from 'socket.io';
 
 /**
  * IoAdapter compatível com Fastify.
  *
- * O IoAdapter padrão recebe a instância do Fastify via app.getHttpServer(), mas
- * o socket.io precisa do http.Server subjacente (fastifyInstance.server).
- * Sem esse adapter, as conexões WebSocket falham silenciosamente.
+ * O IoAdapter padrão não vincula corretamente o Socket.io ao http.Server
+ * subjacente do Fastify. Este adapter cria o Socket.io Server manualmente
+ * vinculado ao http.Server do Fastify e cacheia a instância para
+ * reutilizar entre múltiplos namespaces (orders, kds, delivery, stock).
  */
 export class FastifyIoAdapter extends IoAdapter {
+  private ioServer: Server | undefined;
+
   constructor(private readonly app: INestApplication) {
-    super(app.getHttpServer().server);
+    super(app);
   }
 
-  createIOServer(port: number, options?: ServerOptions): any {
-    return super.createIOServer(port, options);
+  createIOServer(_port: number, options?: ServerOptions): Server {
+    if (this.ioServer) return this.ioServer;
+
+    const httpServer = this.app.getHttpServer().server;
+    this.ioServer = new Server(httpServer, {
+      cors: { origin: '*' },
+      ...options,
+    });
+    return this.ioServer;
   }
 }
