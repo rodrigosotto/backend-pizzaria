@@ -11,6 +11,7 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
 import type { KdsItem } from '@prisma/client';
+import { SupabaseJwtService } from '../modules/auth/supabase-jwt.service';
 
 /**
  * Gateway WebSocket para o Kitchen Display System.
@@ -37,7 +38,10 @@ export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(KdsGateway.name);
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly supabaseJwt: SupabaseJwtService,
+  ) {}
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -52,11 +56,17 @@ export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      // Tenta token local (HS256); tokens Supabase também são aceitos via mesmo secret
-      const payload = this.jwtService.verify<{ sub: string; email: string }>(token, {
-        secret: process.env.JWT_SECRET,
-      });
-      // Anexa payload ao socket para uso posterior
+      let payload: { sub: string; email: string };
+
+      if (this.isLocalToken(token)) {
+        payload = this.jwtService.verify<{ sub: string; email: string }>(token, {
+          secret: process.env.JWT_SECRET,
+          issuer: 'pizzaria-backend',
+        });
+      } else {
+        payload = await this.supabaseJwt.verifyToken(token);
+      }
+
       (client as any).user = payload;
       this.logger.log(`[KDS] Client connected: ${client.id} (user: ${payload.sub})`);
     } catch {
@@ -107,6 +117,18 @@ export class KdsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  private isLocalToken(token: string): boolean {
+    try {
+      const [, payloadB64] = token.split('.');
+      const decoded = JSON.parse(Buffer.from(payloadB64, 'base64url').toString()) as {
+        iss?: string;
+      };
+      return decoded.iss === 'pizzaria-backend';
+    } catch {
+      return false;
+    }
+  }
 
   private extractToken(client: Socket): string | undefined {
     const authToken: string | undefined = (client.handshake.auth as any)?.token;

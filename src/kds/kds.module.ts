@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { KdsController } from './kds.controller';
 import { KdsService } from './kds.service';
 import { KdsGateway } from './kds.gateway';
+import { AuthModule } from '../modules/auth/auth.module';
 
 @Module({
   imports: [
-    // JwtModule necessário para o gateway validar tokens no handleConnection
+    AuthModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({

@@ -20,7 +20,7 @@ export class FastifyIoAdapter extends IoAdapter {
   createIOServer(_port: number, options?: ServerOptions): Server {
     if (this.ioServer) return this.ioServer;
 
-    const httpServer = this.app.getHttpServer().server;
+    const httpServer = this.app.getHttpServer();
     this.ioServer = new Server(httpServer, {
       cors: { origin: '*' },
       ...options,
