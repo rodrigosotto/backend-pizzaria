@@ -138,6 +138,7 @@ model User {
   closedCashSessions CashSession[]      @relation("CashCloser")
   auditLogs          AuditLog[]
   refreshTokens      RefreshToken[]
+  delivererProfiles  Deliverer[]
 
   @@map("users")
 }
@@ -475,8 +476,10 @@ model Deliverer {
   createdAt  DateTime @default(now()) @map("created_at")
 
   pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   orders   Order[]
 
+  @@unique([pizzeriaId, userId])
   @@map("deliverers")
 }
 

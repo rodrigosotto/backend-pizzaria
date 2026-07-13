@@ -17,7 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import type { JwtPayload } from './chat.service';
 import { ChatService } from './chat.service';
 import { CreateTemplateDto } from './dto/create-template.dto';
@@ -25,7 +25,7 @@ import { UpdateTemplateDto } from './dto/update-template.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Chat — Templates')
 @ApiBearerAuth('access-token')
@@ -38,7 +38,7 @@ export class TemplatesController {
   constructor(private readonly chatService: ChatService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar templates de mensagem (RF62)',
     description: `Lista templates de resposta rápida da pizzaria (RF62).
@@ -58,7 +58,7 @@ Use \`?activeOnly=false\` para incluir templates desativados (gestão pelo admin
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Criar template (RF62/RF57)',
     description: `Cria um template de mensagem rápida.
@@ -81,7 +81,7 @@ O campo \`content\` suporta variáveis entre \`{{ }}\` para substituição manua
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar template',
     description: 'Atualiza conteúdo, título ou status do template. Use `isActive: false` para desativar sem apagar.',
@@ -99,7 +99,7 @@ O campo \`content\` suporta variáveis entre \`{{ }}\` para substituição manua
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Remover template',
     description: 'Remove permanentemente o template. Prefira `isActive: false` para preservar histórico.',

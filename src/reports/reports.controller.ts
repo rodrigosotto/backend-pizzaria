@@ -7,12 +7,12 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { StockCategory, UserRole } from '@prisma/client';
+import { StockCategory, PizzeriaUserRole } from '@prisma/client';
 import { ReportsService } from './reports.service';
 import { ReportFiltersDto, ReportFiltersWithLimitDto } from './dto/report-filters.dto';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Relatórios')
 @ApiBearerAuth('access-token')
@@ -29,7 +29,7 @@ export class ReportsController {
   // =========================================================================
 
   @Get('sales')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Relatório de vendas do período',
     description: `Visão consolidada de vendas (pedidos com \`paymentStatus=paid\`):
@@ -52,7 +52,7 @@ Padrão: período = mês atual. Use \`?dateFrom=\` e \`?dateTo=\` para personali
   }
 
   @Get('sales/products')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Produtos mais vendidos',
     description: 'Top produtos por quantidade vendida no período, com receita gerada e número de pedidos. Padrão: top 20.',
@@ -73,7 +73,7 @@ Padrão: período = mês atual. Use \`?dateFrom=\` e \`?dateTo=\` para personali
   // =========================================================================
 
   @Get('stock/consumption')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Consumo de estoque por período (RF80)',
     description: `Relatório de saídas de estoque no período por ingrediente (RF80).
@@ -100,7 +100,7 @@ Filtro opcional por categoria de insumo (\`?category=\`).`,
   }
 
   @Get('stock/consolidation')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Consolidação de insumos por pedidos (RF81)',
     description: `Relatório de consolidação de insumos necessários baseado nos pedidos do período (RF81).
@@ -126,7 +126,7 @@ Retorna dois lados independentes:
   // =========================================================================
 
   @Get('coupons')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Relatório de cupons utilizados (RF94)',
     description: `Impacto dos cupons no faturamento do período (RF94):
@@ -149,7 +149,7 @@ Retorna dois lados independentes:
   // =========================================================================
 
   @Get('deliveries')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Métricas de entregas por entregador',
     description: `Relatório de desempenho de entregadores no período:
@@ -172,7 +172,7 @@ Retorna dois lados independentes:
   // =========================================================================
 
   @Get('cash')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Histórico consolidado de sessões de caixa',
     description: `Lista todas as sessões de caixa do período com totais agregados:

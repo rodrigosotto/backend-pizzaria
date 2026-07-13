@@ -51,7 +51,6 @@ export class PizzeriaController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin)
   @ApiOperation({ summary: 'Buscar pizzaria por ID' })
   @ApiResponse({ status: 200, description: 'Dados da pizzaria' })
   @ApiResponse({ status: 403, description: 'Sem acesso a esta pizzaria' })
@@ -60,7 +59,6 @@ export class PizzeriaController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
   @ApiOperation({ summary: 'Atualizar dados da pizzaria' })
   @ApiResponse({ status: 200, description: 'Pizzaria atualizada' })
   update(
@@ -81,7 +79,6 @@ export class PizzeriaController {
   }
 
   @Post(':id/logo')
-  @Roles(UserRole.owner, UserRole.admin)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload do logo da pizzaria' })
   @ApiResponse({ status: 201, description: 'Logo atualizado com sucesso' })
@@ -99,7 +96,6 @@ export class PizzeriaController {
   }
 
   @Get(':id/users')
-  @Roles(UserRole.owner, UserRole.admin)
   @ApiOperation({ summary: 'Listar usuários vinculados à pizzaria' })
   @ApiResponse({ status: 200, description: 'Lista de vínculos ativos' })
   findUsers(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
@@ -107,7 +103,6 @@ export class PizzeriaController {
   }
 
   @Post(':id/users')
-  @Roles(UserRole.owner, UserRole.admin)
   @ApiOperation({ summary: 'Cadastrar usuário na pizzaria' })
   @ApiResponse({ status: 201, description: 'Usuário cadastrado com sucesso' })
   @ApiResponse({ status: 409, description: 'Usuário já tem vínculo ativo' })
@@ -120,7 +115,6 @@ export class PizzeriaController {
   }
 
   @Patch(':id/users/:userId')
-  @Roles(UserRole.owner, UserRole.admin)
   @ApiOperation({ summary: 'Atualizar role de um usuário na pizzaria' })
   @ApiResponse({ status: 200, description: 'Role atualizado' })
   updateUserRole(
@@ -133,7 +127,6 @@ export class PizzeriaController {
   }
 
   @Delete(':id/users/:userId')
-  @Roles(UserRole.owner, UserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remover usuário da pizzaria' })
   @ApiResponse({ status: 200, description: 'Vínculo removido' })

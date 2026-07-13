@@ -17,11 +17,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CardapioService } from './cardapio.service';
 import type { JwtPayload } from './cardapio.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -38,7 +38,7 @@ export class CategoriesController {
   constructor(private readonly cardapioService: CardapioService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar categorias do cardápio',
     description: 'Retorna todas as categorias da pizzaria ordenadas por `sortOrder` e depois por nome. Inclui categorias ativas e inativas.',
@@ -49,7 +49,7 @@ export class CategoriesController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Criar categoria',
     description: 'Cria uma nova categoria no cardápio. O `slug` deve ser único dentro da pizzaria e seguir o formato kebab-case (ex: `pizzas-tradicionais`). Os campos `availableFrom` e `availableTo` (formato HH:MM) limitam o horário em que a categoria aparece no cardápio público (RF18).',
@@ -66,7 +66,7 @@ export class CategoriesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar categoria',
     description: 'Atualiza parcialmente os dados de uma categoria. Ao alterar o `slug`, o sistema verifica unicidade antes de salvar.',
@@ -86,7 +86,7 @@ export class CategoriesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover categoria',

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -150,7 +151,7 @@ export class PizzeriaService {
   }
 
   async update(pizzeriaId: string, dto: UpdatePizzeriaDto, user: JwtPayload) {
-    await this.assertAccess(pizzeriaId, user.sub);
+    await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
     const before = await this.prisma.db.pizzeria.findUnique({
       where: { id: pizzeriaId },
@@ -219,7 +220,7 @@ export class PizzeriaService {
     mimeType: string,
     user: JwtPayload,
   ) {
-    await this.assertAccess(pizzeriaId, user.sub);
+    await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
     const ext = path.extname(originalName) || '.jpg';
     const storagePath = `${pizzeriaId}/logo${ext}`;
@@ -249,7 +250,7 @@ export class PizzeriaService {
   }
 
   async findUsers(pizzeriaId: string, user: JwtPayload) {
-    await this.assertAccess(pizzeriaId, user.sub);
+    await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
     return this.prisma.db.userPizzeriaRole.findMany({
       where: { pizzeriaId, isActive: true },
@@ -259,7 +260,13 @@ export class PizzeriaService {
         invitedAt: true,
         acceptedAt: true,
         user: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            avatarUrl: true,
+          },
         },
       },
       orderBy: { invitedAt: 'asc' },
@@ -271,11 +278,11 @@ export class PizzeriaService {
     dto: RegisterPizzeriaUserDto,
     user: JwtPayload,
   ) {
-    await this.assertAccess(pizzeriaId, user.sub);
+    await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
     let target = await this.prisma.db.user.findUnique({
       where: { email: dto.email },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, phone: true },
     });
 
     if (!target) {
@@ -307,7 +314,7 @@ export class PizzeriaService {
         data: {
           role: UserRole[dto.role] ?? UserRole.atendente,
         },
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, phone: true },
       });
 
       await this.audit.log({
@@ -335,7 +342,7 @@ export class PizzeriaService {
       );
     }
 
-    const role = await this.prisma.db.userPizzeriaRole.upsert({
+    const membershipUpsert = this.prisma.db.userPizzeriaRole.upsert({
       where: { userId_pizzeriaId: { userId: target.id, pizzeriaId } },
       update: { role: dto.role, isActive: true },
       create: { userId: target.id, pizzeriaId, role: dto.role },
@@ -345,10 +352,48 @@ export class PizzeriaService {
         invitedAt: true,
         acceptedAt: true,
         user: {
-          select: { id: true, name: true, email: true, avatarUrl: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            avatarUrl: true,
+          },
         },
       },
     });
+
+    let role: Awaited<typeof membershipUpsert>;
+    if (dto.role === PizzeriaUserRole.entregador) {
+      const phone = dto.phone ?? target.phone;
+      if (!phone) {
+        throw new BadRequestException(
+          'Telefone é obrigatório para cadastrar um entregador',
+        );
+      }
+
+      [role] = await this.prisma.db.$transaction([
+        membershipUpsert,
+        this.prisma.db.deliverer.upsert({
+          where: {
+            pizzeriaId_userId: { pizzeriaId, userId: target.id },
+          },
+          update: {
+            name: target.name,
+            phone,
+            isActive: true,
+          },
+          create: {
+            pizzeriaId,
+            userId: target.id,
+            name: target.name,
+            phone,
+          },
+        }),
+      ]);
+    } else {
+      role = await membershipUpsert;
+    }
 
     await this.audit.log({
       action: 'USER_INVITED',
@@ -371,7 +416,7 @@ export class PizzeriaService {
     dto: UpdatePizzeriaUserDto,
     user: JwtPayload,
   ) {
-    await this.assertAccess(pizzeriaId, user.sub);
+    await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
     if (targetUserId === user.sub) {
       throw new ForbiddenException('Não é possível alterar o próprio role');
@@ -379,6 +424,12 @@ export class PizzeriaService {
 
     const link = await this.prisma.db.userPizzeriaRole.findUnique({
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
+      select: {
+        id: true,
+        role: true,
+        isActive: true,
+        user: { select: { id: true, name: true, phone: true } },
+      },
     });
 
     if (!link || !link.isActive)
@@ -386,15 +437,54 @@ export class PizzeriaService {
 
     const before = { role: link.role };
 
-    const updated = await this.prisma.db.userPizzeriaRole.update({
+    const membershipUpdate = this.prisma.db.userPizzeriaRole.update({
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
       data: { role: dto.role },
       select: {
         id: true,
         role: true,
-        user: { select: { id: true, name: true, email: true } },
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
       },
     });
+
+    let updated: Awaited<typeof membershipUpdate>;
+    if (dto.role === PizzeriaUserRole.entregador) {
+      if (!link.user.phone) {
+        throw new BadRequestException(
+          'O usuário precisa ter telefone para assumir a função de entregador',
+        );
+      }
+
+      [updated] = await this.prisma.db.$transaction([
+        membershipUpdate,
+        this.prisma.db.deliverer.upsert({
+          where: {
+            pizzeriaId_userId: { pizzeriaId, userId: targetUserId },
+          },
+          update: {
+            name: link.user.name,
+            phone: link.user.phone,
+            isActive: true,
+          },
+          create: {
+            pizzeriaId,
+            userId: targetUserId,
+            name: link.user.name,
+            phone: link.user.phone,
+          },
+        }),
+      ]);
+    } else {
+      [updated] = await this.prisma.db.$transaction([
+        membershipUpdate,
+        this.prisma.db.deliverer.updateMany({
+          where: { pizzeriaId, userId: targetUserId, isActive: true },
+          data: { isActive: false },
+        }),
+      ]);
+    }
 
     await this.audit.log({
       action: 'PIZZERIA_USER_ROLE_UPDATED',
@@ -410,7 +500,7 @@ export class PizzeriaService {
   }
 
   async removeUser(pizzeriaId: string, targetUserId: string, user: JwtPayload) {
-    await this.assertAccess(pizzeriaId, user.sub);
+    await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
     if (targetUserId === user.sub) {
       throw new ForbiddenException('Não é possível remover o próprio vínculo');
@@ -423,10 +513,16 @@ export class PizzeriaService {
     if (!link || !link.isActive)
       throw new NotFoundException('Vínculo não encontrado');
 
-    await this.prisma.db.userPizzeriaRole.update({
-      where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
-      data: { isActive: false },
-    });
+    await this.prisma.db.$transaction([
+      this.prisma.db.userPizzeriaRole.update({
+        where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
+        data: { isActive: false },
+      }),
+      this.prisma.db.deliverer.updateMany({
+        where: { pizzeriaId, userId: targetUserId, isActive: true },
+        data: { isActive: false },
+      }),
+    ]);
 
     await this.audit.log({
       action: 'PIZZERIA_USER_REMOVED',
@@ -443,14 +539,19 @@ export class PizzeriaService {
   private async assertAccess(
     pizzeriaId: string,
     userId: string,
+    allowedRoles?: PizzeriaUserRole[],
   ): Promise<void> {
     const link = await this.prisma.db.userPizzeriaRole.findUnique({
       where: { userId_pizzeriaId: { userId, pizzeriaId } },
-      select: { isActive: true },
+      select: { isActive: true, role: true },
     });
 
     if (!link?.isActive) {
       throw new ForbiddenException('Sem acesso a esta pizzaria');
+    }
+
+    if (allowedRoles && !allowedRoles.includes(link.role)) {
+      throw new ForbiddenException('Sem permissão nesta pizzaria');
     }
   }
 }

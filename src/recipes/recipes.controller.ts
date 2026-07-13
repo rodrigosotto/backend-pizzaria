@@ -16,11 +16,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import type { JwtPayload } from './recipes.service';
 import { RecipesService } from './recipes.service';
 import { UpsertRecipeDto } from './dto/upsert-recipe.dto';
@@ -38,7 +38,7 @@ export class RecipesController {
   // ── GET /recipes/:productId ────────────────────────────────────────────────
 
   @Get(':productId')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Buscar ficha técnica do produto (RF76/RF81)',
     description:
@@ -90,7 +90,7 @@ export class RecipesController {
   // ── PUT /recipes/:productId ────────────────────────────────────────────────
 
   @Put(':productId')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Criar ou substituir ficha técnica (RF76)',
     description:
@@ -118,7 +118,7 @@ export class RecipesController {
   // ── DELETE /recipes/:productId ─────────────────────────────────────────────
 
   @Delete(':productId')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover ficha técnica do produto',

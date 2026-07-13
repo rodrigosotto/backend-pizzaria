@@ -10,8 +10,8 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaUserRole } from '@prisma/client';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
@@ -23,7 +23,7 @@ import { UpdateLoyaltyDto } from './dto/update-loyalty.dto';
 @ApiBearerAuth()
 @ApiHeader({ name: 'X-Pizzeria-Id', required: true })
 @RequiresPizzeria()
-@Roles(UserRole.owner, UserRole.admin)
+@PizzeriaRoles(PizzeriaUserRole.admin)
 @Controller('loyalty')
 export class LoyaltyController {
   constructor(private readonly loyaltyService: LoyaltyService) {}

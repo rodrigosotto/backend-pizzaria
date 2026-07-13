@@ -17,11 +17,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CardapioService } from './cardapio.service';
 import type { JwtPayload } from './cardapio.service';
 import { CreateCrustDto } from './dto/create-crust.dto';
@@ -38,7 +38,7 @@ export class CrustsController {
   constructor(private readonly cardapioService: CardapioService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar bordas disponíveis',
     description: 'Retorna todas as bordas da pizzaria (ativas e inativas) com os preços extras por tamanho (P/M/G/GG).',
@@ -49,7 +49,7 @@ export class CrustsController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Criar borda recheada',
     description: 'Cadastra uma nova borda recheada. Os campos `extraPriceS/M/L/Xl` definem o acréscimo no preço final para cada tamanho de pizza. Use `0` para tamanhos sem acréscimo.',
@@ -65,7 +65,7 @@ export class CrustsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar borda',
     description: 'Atualiza parcialmente os dados da borda. Útil para reajuste de preços ou para ativar/desativar.',
@@ -84,7 +84,7 @@ export class CrustsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover borda',

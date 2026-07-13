@@ -17,11 +17,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CardapioService } from './cardapio.service';
 import type { JwtPayload } from './cardapio.service';
 import { CreateComboDto, ComboItemDto } from './dto/create-combo.dto';
@@ -38,7 +38,7 @@ export class CombosController {
   constructor(private readonly cardapioService: CardapioService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar combos e promoções',
     description: 'Retorna todos os combos da pizzaria com seus itens, produtos e tamanhos vinculados. Inclui combos ativos e inativos.',
@@ -49,7 +49,7 @@ export class CombosController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Buscar combo por ID',
     description: 'Retorna o combo completo com todos os itens, produtos e tamanhos vinculados.',
@@ -62,7 +62,7 @@ export class CombosController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Criar combo',
     description: 'Cria um combo com preço especial. A criação é atômica — o combo e todos os itens são gravados em uma única transação. Mínimo de 2 itens obrigatório. Todos os produtos informados devem pertencer à pizzaria. Os campos `validFrom` e `validTo` definem a vigência — fora do intervalo o combo não aparece no cardápio público.',
@@ -79,7 +79,7 @@ export class CombosController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar dados do combo',
     description: 'Atualiza nome, descrição, preço, vigência ou status do combo. Para alterar os itens use os endpoints `/items`.',
@@ -98,7 +98,7 @@ export class CombosController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover combo',
@@ -118,7 +118,7 @@ export class CombosController {
   // ── Items ─────────────────────────────────────────────────────────────────
 
   @Post(':id/items')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Adicionar item ao combo',
     description: 'Adiciona um produto ao combo existente. O `productSizeId` é opcional — quando omitido, qualquer tamanho do produto serve para compor o combo.',
@@ -137,7 +137,7 @@ export class CombosController {
   }
 
   @Delete(':id/items/:itemId')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover item do combo',

@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { PizzeriaContextGuard } from './guards/pizzeria-context.guard';
+import { PizzeriaRolesGuard } from './guards/pizzeria-roles.guard';
 import { SupabaseJwtService } from './supabase-jwt.service';
 
 @Module({
@@ -20,8 +21,9 @@ import { SupabaseJwtService } from './supabase-jwt.service';
     SupabaseJwtService,
     AuthService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PizzeriaContextGuard },
+    { provide: APP_GUARD, useClass: PizzeriaRolesGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
   exports: [AuthService, SupabaseJwtService, JwtModule],
 })

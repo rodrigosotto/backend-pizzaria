@@ -384,10 +384,22 @@ Os guards são registrados como `APP_GUARD` no `AuthModule`, o que os torna **gl
 - Após validar, injeta o payload do JWT em `request.user`
 
 **RolesGuard**
-- Roda depois do JwtAuthGuard
-- Verifica se o `role` do usuário (presente no JWT) está na lista do decorator `@Roles()`
+- Roda depois dos guards de contexto da pizzaria
+- Verifica a role **global da plataforma** na lista do decorator `@Roles()`
 - Se não tiver `@Roles()` no endpoint → passa direto (sem restrição de role)
 - Se o role não bater → 403 Forbidden
+
+**PizzeriaContextGuard**
+- Roda depois do `JwtAuthGuard` e antes dos guards de roles
+- Nos endpoints com `@RequiresPizzeria()`, valida o header `X-Pizzeria-Id` e o vínculo ativo em `user_pizzeria_roles`
+- Injeta `request.pizzeriaId` e `request.pizzeriaRole`
+
+**PizzeriaRolesGuard**
+- Verifica `request.pizzeriaRole` na lista declarada por `@PizzeriaRoles()`
+- Deve ser usado em endpoints multi-tenant; a role global do JWT não concede permissão operacional em uma unidade
+- Um usuário `owner` global acessa a operação com a role `admin` criada no vínculo da unidade
+
+Ordem global: `JwtAuthGuard` → `PizzeriaContextGuard` → `PizzeriaRolesGuard` → `RolesGuard`.
 
 **Como marcar um endpoint como público (sem JWT):**
 ```typescript
@@ -398,7 +410,7 @@ import { Public } from '../auth/decorators/public.decorator';
 minhaRotaPublica() { ... }
 ```
 
-**Como restringir por role:**
+**Como restringir por role global da plataforma:**
 ```typescript
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
@@ -406,6 +418,17 @@ import { UserRole } from '@prisma/client';
 @Roles(UserRole.owner, UserRole.admin)
 @Get('rota-restrita')
 rotaRestrita() { ... }
+```
+
+**Como restringir por role da unidade:**
+```typescript
+import { PizzeriaRoles } from '../auth/decorators/pizzeria-roles.decorator';
+import { PizzeriaUserRole } from '@prisma/client';
+
+@RequiresPizzeria()
+@PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
+@Get('rota-operacional')
+rotaOperacional() { ... }
 ```
 
 ---
@@ -453,8 +476,8 @@ meuEndpoint(@CurrentUser() user: JwtPayload) {
 
 ```
 UserRole (role global do usuário na plataforma):
-  owner       → dono da pizzaria, acesso total
-  admin       → administrador operacional
+  owner       → proprietário na plataforma e acesso ao Hub
+  admin       → administrador global/legado da plataforma
   atendente   → atende pedidos
   cozinha     → visualiza e atualiza status de produção
   entregador  → acessa entregas atribuídas
@@ -466,6 +489,8 @@ PizzeriaUserRole (role do usuário dentro de uma pizzaria específica):
 ```
 
 Um usuário pode ser `owner` globalmente mas ter roles diferentes em cada pizzaria que gerencia. Essa relação fica na tabela `user_pizzeria_roles`.
+
+> Em endpoints com `@RequiresPizzeria()`, a autorização usa exclusivamente `PizzeriaUserRole`. `UserRole` continua reservado a operações globais, como Hub, criação/listagem de unidades e administração da conta.
 
 ---
 
@@ -494,7 +519,7 @@ A Fase 3 entrega o gerenciamento de pizzarias e o painel centralizado (hub) para
 
 CRUD completo da entidade `Pizzeria` com gerenciamento de usuários vinculados.
 
-**Regra de acesso:** todo endpoint valida se o usuário tem um `UserPizzeriaRole` ativo para aquela pizzaria (`assertAccess`). Sem vínculo ativo → 403 Forbidden.
+**Regra de acesso:** todo endpoint por `:id` valida se o usuário tem um `UserPizzeriaRole` ativo para aquela pizzaria (`assertAccess`). Sem vínculo ativo → 403 Forbidden. Atualização da unidade, logo e gerenciamento da equipe exigem role `admin` nesse vínculo, independentemente da role global do usuário.
 
 **Transação atômica na criação:** ao criar uma pizzaria, o serviço usa `this.prisma.db.$transaction` para criar a `Pizzeria` e o `UserPizzeriaRole` (com role `admin`) do owner em uma única operação. Se qualquer parte falhar, o banco reverte tudo.
 
@@ -592,7 +617,7 @@ Módulo completo de gestão do cardápio: categorias, produtos, tamanhos, bordas
 
 ### 8.1 CardápioModule (`src/cardapio/`)
 
-Todos os endpoints exigem JWT + `X-Pizzeria-Id` (exceto o cardápio público). O `PizzeriaContextGuard` valida o header e garante que o usuário tem vínculo ativo na pizzaria.
+Todos os endpoints exigem JWT + `X-Pizzeria-Id` (exceto o cardápio público). O `PizzeriaContextGuard` valida o header e o vínculo ativo; em seguida, o `PizzeriaRolesGuard` autoriza pela role específica dessa pizzaria.
 
 ---
 
@@ -1652,6 +1677,22 @@ Roles: `owner`, `admin`
 
 Soft delete: seta `isActive = false`. Retorna `204 No Content`. Gera auditoria.
 
+#### Sincronização com usuários da pizzaria
+
+O perfil operacional `Deliverer` é sincronizado com `UserPizzeriaRole`:
+
+- cadastrar ou reativar um usuário com role `entregador` cria ou reativa o
+  `Deliverer` na mesma transação;
+- trocar o usuário para outra role desativa o perfil operacional;
+- remover o vínculo do usuário com a pizzaria também desativa o perfil;
+- telefone é obrigatório para atribuir a role `entregador`;
+- `@@unique([pizzeriaId, userId])` impede perfis duplicados para a mesma conta
+  dentro da pizzaria;
+- entregadores externos continuam permitidos com `userId = null`.
+
+Ao informar `userId` diretamente em `POST/PATCH /deliverers`, o backend valida
+que a conta possui vínculo ativo e role `entregador` na pizzaria corrente.
+
 ---
 
 #### POST /coupons/validate
@@ -1961,4 +2002,3 @@ Cancela (hard delete) uma reserva. Retorna `204 No Content`. Gera auditoria.
 > - Abrir/fechar sessão usa `$transaction` para garantir consistência entre `TableSession` e `Table.status`.
 > - A rota `GET /tables/reservations` foi posicionada **antes** de `GET /tables/:id` para evitar que o Express/Fastify interprete `reservations` como um UUID de mesa.
 > - Reservas não alteram o status da mesa automaticamente — o atendente confirma a chegada abrindo a sessão.
-

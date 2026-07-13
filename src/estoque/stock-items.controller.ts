@@ -17,7 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { StockCategory, UserRole } from '@prisma/client';
+import { StockCategory, PizzeriaUserRole } from '@prisma/client';
 import type { JwtPayload } from './estoque.service';
 import { EstoqueService } from './estoque.service';
 import { CreateStockItemDto } from './dto/create-stock-item.dto';
@@ -26,7 +26,7 @@ import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Estoque — Insumos')
 @ApiBearerAuth('access-token')
@@ -39,7 +39,7 @@ export class StockItemsController {
   constructor(private readonly estoqueService: EstoqueService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha)
   @ApiOperation({
     summary: 'Listar insumos do estoque (RF72/RF73)',
     description: 'Retorna insumos com flag `isAlert` indicando se quantity ≤ minQuantity (RN04). Filtrável por categoria, fornecedor ou apenas alertas.',
@@ -62,7 +62,7 @@ export class StockItemsController {
   }
 
   @Get('alerts')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Insumos abaixo do estoque mínimo (RF74/RN04)',
     description: 'Retorna apenas insumos com quantity ≤ minQuantity, ordenados pelo percentual mais crítico (menor quantidade relativa primeiro). Usado para alertas no painel e no Hub.',
@@ -73,7 +73,7 @@ export class StockItemsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha)
   @ApiOperation({
     summary: 'Buscar insumo por ID',
     description: 'Retorna insumo com fornecedor e últimas 50 movimentações.',
@@ -89,7 +89,7 @@ export class StockItemsController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Cadastrar insumo (RF72)',
     description: 'Cadastra insumo com categoria, unidade de medida e estoque mínimo para alerta (RN04). Se `quantity > 0`, registra automaticamente um movimento de entrada "Estoque inicial".',
@@ -105,7 +105,7 @@ export class StockItemsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Atualizar insumo',
     description: 'Atualiza metadados do insumo (nome, unidade, mínimo, custo, fornecedor). Para alterar a quantidade use o endpoint de movimentações.',
@@ -123,7 +123,7 @@ export class StockItemsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Remover insumo',
     description: 'Remove o insumo. Bloqueado se houver movimentações registradas.',
@@ -145,7 +145,7 @@ export class StockItemsController {
   // -------------------------------------------------------------------------
 
   @Post(':id/movements')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Registrar movimentação de estoque (RF75/RF77)',
     description: `Registra uma entrada ou saída de estoque e atualiza a quantidade do insumo atomicamente.
@@ -172,7 +172,7 @@ Saídas (\`withdrawal\` e \`loss\`) são bloqueadas se a quantidade solicitada e
   }
 
   @Get(':id/movements')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha)
   @ApiOperation({
     summary: 'Histórico de movimentações (RF79)',
     description: 'Lista movimentações do insumo, da mais recente para a mais antiga. Filtrável por tipo.',

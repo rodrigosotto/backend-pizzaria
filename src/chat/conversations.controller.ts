@@ -18,7 +18,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import type { JwtPayload } from './chat.service';
 import { ChatService } from './chat.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -27,7 +27,7 @@ import { SendTemplateMessageDto } from './dto/send-template-message.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Chat — Conversas')
 @ApiBearerAuth('access-token')
@@ -40,7 +40,7 @@ export class ConversationsController {
   constructor(private readonly chatService: ChatService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar conversas (RF56)',
     description: `Lista de conversas estilo WhatsApp — ordenadas pela mensagem mais recente.
@@ -66,7 +66,7 @@ Filtro \`?unreadOnly=true\` exibe apenas conversas com mensagens não lidas.`,
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Iniciar ou retomar conversa com cliente (RF56)',
     description: `Cria uma nova conversa ou retorna a existente (constraint unique por pizzeria + cliente).
@@ -82,7 +82,7 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Detalhes da conversa com últimas 50 mensagens (RF60)',
     description: 'Retorna a conversa com dados do cliente e as últimas 50 mensagens em ordem cronológica.',
@@ -99,7 +99,7 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
 
   @Patch(':id/read')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Marcar conversa como lida',
     description: 'Zera o `unreadCount` da conversa. Deve ser chamado quando o atendente abre a janela de chat.',
@@ -119,7 +119,7 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
   // -------------------------------------------------------------------------
 
   @Post(':id/messages')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Enviar mensagem (RF61/RF57/RF59)',
     description: `Envia uma mensagem na conversa. Suporta texto e emojis (RF61).
@@ -146,7 +146,7 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
   }
 
   @Post(':id/messages/template')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Enviar mensagem a partir de template (RF62)',
     description: 'Usa o conteúdo de um template ativo como mensagem. Enviada com senderType `attendant`.',
@@ -164,7 +164,7 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
   }
 
   @Get(':id/messages')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Histórico completo de mensagens (RF60)',
     description: 'Lista mensagens paginadas da conversa, da mais antiga para a mais recente. Padrão: 50 por página, máx: 200.',

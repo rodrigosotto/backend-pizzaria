@@ -23,11 +23,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CardapioService } from './cardapio.service';
 import type { JwtPayload } from './cardapio.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -49,7 +49,7 @@ export class ProductsController {
   // ── Products ──────────────────────────────────────────────────────────────
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar produtos do cardápio',
     description: 'Retorna todos os produtos da pizzaria com seus tamanhos e categoria. Use `?categoryId=` para filtrar por categoria.',
@@ -64,7 +64,7 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Buscar produto por ID',
     description: 'Retorna o produto com todos os tamanhos ativos e a categoria vinculada.',
@@ -77,7 +77,7 @@ export class ProductsController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Criar produto',
     description: 'Cria um produto no cardápio. Para pizzas, defina `isPizza: true` e `maxFlavors`. O campo `flavorPriceRule` determina como o preço é calculado quando o cliente escolhe múltiplos sabores (RN01): `highest` = sabor mais caro (padrão), `average` = média, `fixed` = preço fixo do tamanho.',
@@ -94,7 +94,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar produto',
     description: 'Atualiza parcialmente os dados do produto. Para mover o produto de categoria, informe o novo `categoryId` — o sistema valida se a categoria pertence à pizzaria.',
@@ -113,7 +113,7 @@ export class ProductsController {
   }
 
   @Post(':id/image')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Upload de imagem do produto',
@@ -147,7 +147,7 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover produto',
@@ -167,7 +167,7 @@ export class ProductsController {
   // ── Sizes ─────────────────────────────────────────────────────────────────
 
   @Get(':id/sizes')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar tamanhos do produto',
     description: 'Retorna todos os tamanhos do produto ordenados por preço crescente.',
@@ -180,7 +180,7 @@ export class ProductsController {
   }
 
   @Post(':id/sizes')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Adicionar tamanho ao produto',
     description: 'Adiciona um novo tamanho ao produto (ex: Grande 35cm — R$ 49,90). O `maxFlavors` aqui sobrescreve o do produto para este tamanho específico.',
@@ -199,7 +199,7 @@ export class ProductsController {
   }
 
   @Patch(':id/sizes/:sizeId')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar tamanho',
     description: 'Atualiza parcialmente um tamanho do produto. Útil para reajustes de preço sem recriar o tamanho.',
@@ -220,7 +220,7 @@ export class ProductsController {
   }
 
   @Delete(':id/sizes/:sizeId')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover tamanho',
@@ -242,7 +242,7 @@ export class ProductsController {
   // ── Recipe (ficha técnica) ─────────────────────────────────────────────────
 
   @Get(':id/recipe')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Ficha técnica do produto (RF76/RF81)',
     description: 'Retorna todos os insumos vinculados a este produto com a quantidade consumida por unidade. Usado para baixa automática de estoque ao confirmar pedido (RF76).',
@@ -255,7 +255,7 @@ export class ProductsController {
   }
 
   @Post(':id/recipe')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Adicionar/atualizar ingrediente na ficha técnica',
     description: 'Vincula um insumo de estoque ao produto com a quantidade consumida por unidade. Se o insumo já existir na receita, atualiza a quantidade (upsert).',
@@ -273,7 +273,7 @@ export class ProductsController {
   }
 
   @Delete(':id/recipe/:stockItemId')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover ingrediente da ficha técnica',
