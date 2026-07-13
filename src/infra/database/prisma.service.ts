@@ -14,7 +14,15 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   db!: PrismaClient;
 
   async onModuleInit(): Promise<void> {
-    this.pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const allowSelfSignedCertificate =
+      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false';
+
+    this.pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: allowSelfSignedCertificate
+        ? { rejectUnauthorized: false }
+        : undefined,
+    });
     const adapter = new PrismaPg(this.pool);
 
     this.db = new PrismaClient({
