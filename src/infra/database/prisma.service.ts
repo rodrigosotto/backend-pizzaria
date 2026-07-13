@@ -16,9 +16,21 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     const allowSelfSignedCertificate =
       process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false';
+    const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      throw new Error('DATABASE_URL não configurada');
+    }
+
+    const databaseUrl = new URL(connectionString);
+    if (allowSelfSignedCertificate) {
+      // pg-connection-string transforma sslmode=require em verify-full e esse
+      // valor pode prevalecer sobre a opção `ssl` fornecida ao Pool.
+      databaseUrl.searchParams.delete('sslmode');
+    }
 
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: databaseUrl.toString(),
       ssl: allowSelfSignedCertificate
         ? { rejectUnauthorized: false }
         : undefined,
