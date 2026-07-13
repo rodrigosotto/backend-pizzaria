@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "prebuild": "npm run prisma:generate",
     "build": "NODE_OPTIONS='--max-old-space-size=4096' nest build --webpack",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' nest start --webpack --watch",
