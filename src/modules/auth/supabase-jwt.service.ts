@@ -13,7 +13,7 @@ interface JwtPayload {
 @Injectable()
 export class SupabaseJwtService implements OnModuleInit {
   private readonly logger = new Logger(SupabaseJwtService.name);
-  private publicKeyPem: string | null = null;
+  private readonly publicKeys = new Map<string, string>();
 
   async onModuleInit() {
     await this.loadPublicKey();
@@ -22,12 +22,29 @@ export class SupabaseJwtService implements OnModuleInit {
   private async loadPublicKey() {
     try {
       const supabaseUrl = process.env.SUPABASE_URL!;
+      if (!supabaseUrl) throw new Error('SUPABASE_URL não configurada');
+
       const res = await fetch(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
-      const { keys } = (await res.json()) as { keys: Record<string, unknown>[] };
-      const jwk = keys[0];
-      const keyObj = createPublicKey({ key: jwk as import('crypto').JsonWebKey, format: 'jwk' });
-      this.publicKeyPem = keyObj.export({ type: 'spki', format: 'pem' }) as string;
-      this.logger.log('Supabase ES256 public key loaded');
+      if (!res.ok) throw new Error(`JWKS respondeu com status ${res.status}`);
+
+      const { keys } = (await res.json()) as {
+        keys: Array<import('crypto').JsonWebKey & { kid?: string }>;
+      };
+
+      this.publicKeys.clear();
+      for (const jwk of keys) {
+        if (!jwk.kid) continue;
+        const keyObj = createPublicKey({ key: jwk, format: 'jwk' });
+        this.publicKeys.set(
+          jwk.kid,
+          keyObj.export({ type: 'spki', format: 'pem' }) as string,
+        );
+      }
+
+      if (this.publicKeys.size === 0) {
+        throw new Error('JWKS não contém chaves públicas válidas');
+      }
+      this.logger.log(`${this.publicKeys.size} Supabase public key(s) loaded`);
     } catch (err) {
       this.logger.warn(`Could not load Supabase JWKS: ${err}. Falling back to HS256 secret.`);
     }
@@ -37,20 +54,31 @@ export class SupabaseJwtService implements OnModuleInit {
     const [headerB64] = token.split('.');
     const header = JSON.parse(
       Buffer.from(headerB64, 'base64url').toString(),
-    ) as { alg?: string };
+    ) as { alg?: string; kid?: string };
 
     if (header.alg === 'ES256' || header.alg === 'RS256') {
-      if (!this.publicKeyPem) {
+      if (!header.kid) throw new Error('Token assimétrico sem kid');
+
+      let publicKeyPem = this.publicKeys.get(header.kid);
+      if (!publicKeyPem) {
+        // Atualiza o JWKS para suportar rotação de chaves sem reiniciar a API.
         await this.loadPublicKey();
+        publicKeyPem = this.publicKeys.get(header.kid);
       }
-      if (!this.publicKeyPem) {
-        throw new Error('Supabase public key unavailable');
+      if (!publicKeyPem) {
+        throw new Error(`Supabase public key unavailable for kid ${header.kid}`);
       }
+
+      const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
       return new Promise<JwtPayload>((resolve, reject) => {
         jwt.verify(
           token,
-          this.publicKeyPem!,
-          { algorithms: [header.alg as 'ES256' | 'RS256'] },
+          publicKeyPem,
+          {
+            algorithms: [header.alg as 'ES256' | 'RS256'],
+            audience: 'authenticated',
+            issuer: `${supabaseUrl}/auth/v1`,
+          },
           (err, decoded) => {
             if (err) reject(err);
             else resolve(decoded as JwtPayload);
