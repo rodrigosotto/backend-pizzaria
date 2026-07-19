@@ -16,6 +16,9 @@ const USER_SELECT = {
   createdAt: true,
 } as const;
 
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png'];
+const MAX_AVATAR_SIZE_BYTES = 1024 * 1024;
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -94,11 +97,14 @@ export class UsersService {
     requesterId: string,
     requesterRole: string,
   ) {
-    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (!ALLOWED_TYPES.includes(mimetype)) {
+    if (!ALLOWED_AVATAR_TYPES.includes(mimetype)) {
       throw new BadRequestException(
-        'Tipo de arquivo inválido. Permitidos: JPEG, PNG, WebP, GIF',
+        'Tipo de arquivo inválido. Permitidos: JPEG ou PNG',
       );
+    }
+
+    if (file.byteLength > MAX_AVATAR_SIZE_BYTES) {
+      throw new BadRequestException('Imagem muito grande. O limite é 1 MB');
     }
 
     if (requesterId !== id && requesterRole !== 'owner' && requesterRole !== 'admin') {

@@ -533,8 +533,21 @@ CRUD completo da entidade `Pizzeria` com gerenciamento de usuários vinculados.
 
 **Gerenciamento de usuários:**
 - `POST /pizzerias/:id/users` → convida um usuário já cadastrado pelo e-mail, criando ou reativando o vínculo `UserPizzeriaRole`
-- `PATCH /pizzerias/:id/users/:userId` → troca o role do usuário na pizzaria
+- `PATCH /pizzerias/:id/users/:userId` → atualiza o perfil cadastral e o role do usuário na pizzaria
 - `DELETE /pizzerias/:id/users/:userId` → desativa o vínculo (soft delete, seta `isActive: false`)
+
+**Perfil de colaborador:** o cadastro de um novo colaborador exige CPF, rua,
+número, bairro, CEP, cidade, estado e país. Esses dados pertencem ao `User`,
+mas continuam opcionais no schema porque a mesma tabela também armazena owners
+e clientes. A migration `20260719000000_add_employee_profiles` preenche os
+usuários existentes com dados estritamente demonstrativos, incluindo CPFs com
+dígitos verificadores válidos; eles devem ser substituídos por dados reais
+antes de qualquer uso em produção.
+
+**Avatar:** `POST /users/:id/avatar` persiste a foto no bucket `users` do
+Supabase Storage e atualiza `users.avatar_url`. O endpoint aceita somente PNG
+e JPEG/JPG, com limite de 1 MB, inclusive para colaboradores cadastrados pelo
+painel de equipe.
 
 **Auditoria:** todas as operações de escrita (create, update, delete, invite, role update, user remove, logo upload) chamam `this.audit.log(...)` explicitamente.
 

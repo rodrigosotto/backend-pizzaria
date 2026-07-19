@@ -9,6 +9,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migrations exigem uma conexão persistente. Em produção, a aplicação usa
+    // DATABASE_URL via Transaction Pooler, enquanto o Prisma CLI prioriza a
+    // DIRECT_URL (Session Pooler/conexão direta) para evitar travamentos.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
