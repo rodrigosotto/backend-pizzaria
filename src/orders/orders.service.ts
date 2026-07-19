@@ -22,8 +22,8 @@ import {
   FlavorPriceRule,
   OrderStatus,
   OrderType,
+  PizzeriaUserRole,
   Prisma,
-  UserRole,
   type Crust,
 } from '@prisma/client';
 
@@ -908,13 +908,13 @@ export class OrdersService {
     id: string,
     dto: UpdateOrderStatusDto,
     userId: string,
-    userRole?: string,
+    userRole: PizzeriaUserRole,
   ) {
     const order = await this.prisma.db.order.findFirst({ where: { id, pizzeriaId } });
     if (!order) throw new NotFoundException('Pedido não encontrado');
 
     // Entregador só pode marcar como "done" pedidos atribuídos a ele
-    if (userRole === UserRole.entregador) {
+    if (userRole === PizzeriaUserRole.entregador) {
       if (dto.status !== OrderStatus.done) {
         throw new BadRequestException('Entregador só pode confirmar a conclusão da entrega');
       }
@@ -1103,7 +1103,7 @@ export class OrdersService {
     id: string,
     dto: CancelOrderDto,
     userId: string,
-    userRole: UserRole,
+    userRole: PizzeriaUserRole,
   ) {
     const order = await this.prisma.db.order.findFirst({ where: { id, pizzeriaId } });
     if (!order) throw new NotFoundException('Pedido não encontrado');
@@ -1114,11 +1114,11 @@ export class OrdersService {
       );
     }
 
-    // RN05 — cancelamento após pagamento exige Admin/Owner
+    // RN05 — cancelamento após pagamento exige Admin da unidade
     if (order.paymentStatus === 'paid') {
-      if (userRole !== UserRole.owner && userRole !== UserRole.admin) {
+      if (userRole !== PizzeriaUserRole.admin) {
         throw new ForbiddenException(
-          'Cancelamento de pedido já pago requer aprovação de Admin ou Owner (RN05)',
+          'Cancelamento de pedido já pago requer aprovação do Admin da unidade (RN05)',
         );
       }
     }

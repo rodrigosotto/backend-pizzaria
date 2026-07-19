@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../infra/database/prisma.service';
 import { AuditService } from '../modules/audit/audit.service';
 import { CreateDelivererDto } from './dto/create-deliverer.dto';
@@ -31,6 +36,22 @@ export class DeliverersService {
   }
 
   async create(pizzeriaId: string, dto: CreateDelivererDto, userId: string) {
+    if (dto.userId) {
+      await this.assertEligibleUser(pizzeriaId, dto.userId);
+
+      const existing = await this.prisma.db.deliverer.findUnique({
+        where: {
+          pizzeriaId_userId: { pizzeriaId, userId: dto.userId },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'Este usuário já possui perfil de entregador nesta pizzaria',
+        );
+      }
+    }
+
     const deliverer = await this.prisma.db.deliverer.create({
       data: {
         pizzeriaId,
@@ -63,6 +84,19 @@ export class DeliverersService {
     userId: string,
   ) {
     await this.findById(pizzeriaId, id);
+    if (dto.userId !== undefined) {
+      await this.assertEligibleUser(pizzeriaId, dto.userId);
+
+      const existing = await this.prisma.db.deliverer.findFirst({
+        where: { pizzeriaId, userId: dto.userId, id: { not: id } },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'Este usuário já possui perfil de entregador nesta pizzaria',
+        );
+      }
+    }
 
     const updated = await this.prisma.db.deliverer.update({
       where: { id },
@@ -106,5 +140,18 @@ export class DeliverersService {
       entityId: id,
       before: { name: deliverer.name },
     });
+  }
+
+  private async assertEligibleUser(pizzeriaId: string, userId: string) {
+    const membership = await this.prisma.db.userPizzeriaRole.findUnique({
+      where: { userId_pizzeriaId: { userId, pizzeriaId } },
+      select: { role: true, isActive: true },
+    });
+
+    if (!membership?.isActive || membership.role !== 'entregador') {
+      throw new BadRequestException(
+        'O usuário selecionado não é um entregador ativo desta pizzaria',
+      );
+    }
   }
 }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Length } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Length } from 'class-validator';
 
 export class CreateDelivererDto {
   @ApiProperty({ example: 'João Silva', description: 'Nome do entregador' })
@@ -38,6 +38,6 @@ export class CreateDelivererDto {
 
   @ApiPropertyOptional({ description: 'ID do usuário da plataforma vinculado ao entregador' })
   @IsOptional()
-  @IsString()
+  @IsUUID()
   userId?: string;
 }

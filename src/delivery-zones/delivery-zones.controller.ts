@@ -11,8 +11,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaUserRole } from '@prisma/client';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
@@ -24,13 +24,13 @@ import { UpdateDeliveryZoneDto } from './dto/update-delivery-zone.dto';
 @ApiBearerAuth()
 @ApiHeader({ name: 'X-Pizzeria-Id', required: true })
 @RequiresPizzeria()
-@Roles(UserRole.owner, UserRole.admin)
+@PizzeriaRoles(PizzeriaUserRole.admin)
 @Controller('delivery-zones')
 export class DeliveryZonesController {
   constructor(private readonly deliveryZonesService: DeliveryZonesService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Listar zonas de entrega da pizzaria' })
   @ApiQuery({ name: 'active', required: false, type: Boolean })
   list(
@@ -42,7 +42,7 @@ export class DeliveryZonesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Buscar zona de entrega por ID' })
   findById(
     @CurrentPizzeria() pizzeriaId: string,

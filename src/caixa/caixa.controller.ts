@@ -17,7 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import type { JwtPayload } from './caixa.service';
 import { CaixaService } from './caixa.service';
 import { OpenCashSessionDto } from './dto/open-cash-session.dto';
@@ -26,7 +26,7 @@ import { CreateWithdrawalDto } from './dto/create-withdrawal.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Caixa')
 @ApiBearerAuth('access-token')
@@ -43,7 +43,7 @@ export class CaixaController {
   // =========================================================================
 
   @Get('dashboard')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Dashboard financeiro do caixa',
     description: `Retorna visão consolidada financeira (RF64/RF65/RF70/RF71):
@@ -64,7 +64,7 @@ export class CaixaController {
   // =========================================================================
 
   @Post('sessions')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Abrir caixa (RF63)',
     description: `Registra uma nova sessão de caixa com fundo de troco inicial.
@@ -83,7 +83,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
   }
 
   @Get('sessions/current')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Sessão de caixa ativa',
     description: 'Retorna a sessão de caixa aberta no momento, com suas sangrias. Retorna 404 se não houver sessão aberta.',
@@ -95,7 +95,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
   }
 
   @Get('sessions')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Histórico de sessões de caixa',
     description: 'Lista todas as sessões de caixa da pizzaria, da mais recente para a mais antiga.',
@@ -118,7 +118,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
   }
 
   @Get('sessions/:id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Detalhes de uma sessão de caixa',
     description: 'Retorna a sessão com quem abriu, quem fechou e todas as sangrias.',
@@ -135,7 +135,7 @@ Bloqueado se já houver uma sessão aberta para esta pizzaria.`,
 
   @Post('sessions/:id/close')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Fechar caixa (RF67/RF69)',
     description: `Fecha a sessão de caixa com relatório consolidado e conciliação de valores (RN03).
@@ -168,7 +168,7 @@ Bloqueado se a sessão já estiver fechada.`,
   // =========================================================================
 
   @Post('sessions/:id/withdrawals')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Registrar sangria (RF66)',
     description: `Registra uma retirada de dinheiro do caixa com motivo e responsável (RN03).
@@ -190,7 +190,7 @@ Bloqueado se a sessão estiver fechada.`,
   }
 
   @Get('sessions/:id/withdrawals')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.caixa, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.caixa, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar sangrias da sessão',
     description: 'Retorna todas as sangrias registradas na sessão de caixa, em ordem cronológica.',

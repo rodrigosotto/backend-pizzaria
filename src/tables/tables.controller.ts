@@ -18,8 +18,8 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { TableStatus, UserRole } from '@prisma/client';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { TableStatus, PizzeriaUserRole } from '@prisma/client';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
@@ -42,7 +42,7 @@ export class TablesController {
   // =========================================================================
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa, UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa, PizzeriaUserRole.cozinha)
   @ApiOperation({ summary: 'Listar mesas da pizzaria' })
   @ApiQuery({ name: 'status', required: false, enum: TableStatus })
   listTables(
@@ -53,7 +53,7 @@ export class TablesController {
   }
 
   @Get('reservations')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Listar reservas de mesa' })
   @ApiQuery({ name: 'tableId', required: false })
   @ApiQuery({ name: 'dateFrom', required: false, description: 'ISO 8601' })
@@ -68,7 +68,7 @@ export class TablesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa, UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa, PizzeriaUserRole.cozinha)
   @ApiOperation({ summary: 'Buscar mesa por ID (inclui sessão ativa)' })
   findTableById(
     @CurrentPizzeria() pizzeriaId: string,
@@ -78,7 +78,7 @@ export class TablesController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Criar mesa' })
   createTable(
     @CurrentPizzeria() pizzeriaId: string,
@@ -89,7 +89,7 @@ export class TablesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Atualizar mesa' })
   updateTable(
     @CurrentPizzeria() pizzeriaId: string,
@@ -101,7 +101,7 @@ export class TablesController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remover mesa (somente se livre e sem sessão ativa)' })
   removeTable(
@@ -117,7 +117,7 @@ export class TablesController {
   // =========================================================================
 
   @Post(':tableId/sessions')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Abrir sessão de atendimento na mesa' })
   @ApiParam({ name: 'tableId', description: 'ID da mesa' })
   openSession(
@@ -130,7 +130,7 @@ export class TablesController {
   }
 
   @Get(':tableId/sessions/current')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa, UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa, PizzeriaUserRole.cozinha)
   @ApiOperation({ summary: 'Obter sessão ativa da mesa (com pedidos)' })
   @ApiParam({ name: 'tableId', description: 'ID da mesa' })
   getCurrentSession(
@@ -141,7 +141,7 @@ export class TablesController {
   }
 
   @Patch(':tableId/sessions/:sessionId/close')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa)
   @ApiOperation({ summary: 'Fechar sessão de atendimento (libera a mesa)' })
   @ApiParam({ name: 'tableId', description: 'ID da mesa' })
   @ApiParam({ name: 'sessionId', description: 'ID da sessão' })
@@ -160,7 +160,7 @@ export class TablesController {
   // =========================================================================
 
   @Post('reservations')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({ summary: 'Criar reserva de mesa' })
   createReservation(
     @CurrentPizzeria() pizzeriaId: string,
@@ -171,7 +171,7 @@ export class TablesController {
   }
 
   @Delete('reservations/:id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cancelar reserva de mesa' })
   cancelReservation(
@@ -183,7 +183,7 @@ export class TablesController {
   }
 
   @Get(':tableId/sessions/:sessionId/split')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Divisão igualitária de conta por número de pessoas (RF40)',
     description: 'Retorna o total da sessão dividido igualmente entre N pessoas.',
@@ -199,7 +199,7 @@ export class TablesController {
   }
 
   @Post(':tableId/sessions/:sessionId/split/by-item')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Divisão de conta por itens selecionados por pessoa (RF40)',
     description: 'Cada pessoa informa quais order_item_ids são seus. Retorna subtotal por pessoa.',

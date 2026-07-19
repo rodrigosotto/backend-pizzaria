@@ -8,11 +8,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { KdsItemStatus, UserRole } from '@prisma/client';
+import { KdsItemStatus, PizzeriaUserRole } from '@prisma/client';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import type { JwtPayload } from './kds.service';
 import { KdsService } from './kds.service';
 import { UpdateKdsItemStatusDto } from './dto/kds.dto';
@@ -30,7 +30,7 @@ export class KdsController {
   // ── GET /kds/queue ──────────────────────────────────────────────────────────
 
   @Get('queue')
-  @Roles(UserRole.cozinha, UserRole.admin, UserRole.owner)
+  @PizzeriaRoles(PizzeriaUserRole.cozinha, PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Fila da cozinha (RF21)',
     description:
@@ -54,7 +54,7 @@ export class KdsController {
   // ── PATCH /kds/items/:itemId/status ─────────────────────────────────────────
 
   @Patch('items/:itemId/status')
-  @Roles(UserRole.cozinha)
+  @PizzeriaRoles(PizzeriaUserRole.cozinha)
   @ApiOperation({
     summary: 'Atualizar status de item KDS (RF22/RF23)',
     description:
@@ -78,7 +78,7 @@ export class KdsController {
   // ── GET /kds/metrics ────────────────────────────────────────────────────────
 
   @Get('metrics')
-  @Roles(UserRole.cozinha, UserRole.admin, UserRole.owner)
+  @PizzeriaRoles(PizzeriaUserRole.cozinha, PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Métricas do turno atual (RF25)',
     description:
@@ -109,7 +109,7 @@ export class KdsController {
   // ── DELETE /kds/queue/done ──────────────────────────────────────────────────
 
   @Delete('queue/done')
-  @Roles(UserRole.admin, UserRole.owner)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Limpar fila de itens concluídos (RF26)',

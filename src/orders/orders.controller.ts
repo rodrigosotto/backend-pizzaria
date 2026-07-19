@@ -19,7 +19,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OrderStatus, OrderType, UserRole } from '@prisma/client';
+import { OrderStatus, OrderType, PizzeriaUserRole } from '@prisma/client';
 import type { JwtPayload } from './orders.service';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -30,8 +30,9 @@ import { RegisterPaymentDto } from './dto/register-payment.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
+import { CurrentPizzeriaRole } from '../modules/auth/decorators/current-pizzeria-role.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Pedidos')
 @ApiBearerAuth('access-token')
@@ -44,7 +45,7 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Criar novo pedido',
     description: `Registra um novo pedido (RF03/RF04). Tipos: delivery, table, counter.
@@ -76,7 +77,7 @@ export class OrdersController {
   // ── Available deliveries — pedidos prontos sem entregador ─────────────────
 
   @Get('available-deliveries')
-  @Roles(UserRole.entregador, UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.entregador, PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Pedidos prontos disponíveis para entrega',
     description: 'Lista pedidos delivery com status "ready" sem entregador atribuído.',
@@ -90,7 +91,7 @@ export class OrdersController {
 
   @Post(':id/claim')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.entregador, UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.entregador, PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Entregador reivindica pedido pronto',
     description: 'Entregador se auto-atribui ao pedido e muda status para "delivering".',
@@ -110,7 +111,7 @@ export class OrdersController {
   // ── My deliveries ──────────────────────────────────────────────────────────
 
   @Get('my-deliveries')
-  @Roles(UserRole.entregador, UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.entregador, PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Minhas entregas',
     description:
@@ -127,7 +128,7 @@ export class OrdersController {
   }
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Listar pedidos da pizzaria',
     description: 'Retorna pedidos paginados com filtros opcionais por status, tipo e data.',
@@ -171,7 +172,7 @@ export class OrdersController {
   }
 
   @Get('number/:orderNumber')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Buscar pedido pelo número',
     description: 'Busca rápida por número sequencial do pedido (RF05). Útil em cozinha/balcão.',
@@ -187,7 +188,7 @@ export class OrdersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Obter detalhes do pedido',
     description: 'Retorna pedido completo com itens, sabores, cliente, entregador e cupom.',
@@ -203,7 +204,7 @@ export class OrdersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Editar campos do cabeçalho do pedido',
     description: 'Permite editar notes, estimatedTime, customerId e deliveryAddressId. Bloqueado para pedidos done ou cancelled.',
@@ -222,7 +223,7 @@ export class OrdersController {
   }
 
   @Patch(':id/items')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Editar itens do pedido (RF09)',
     description: `Substitui todos os itens do pedido por uma nova lista. Só é permitido quando o status é \`accepted\` (antes de ir para preparo).
@@ -243,7 +244,7 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.cozinha, UserRole.entregador)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.cozinha, PizzeriaUserRole.entregador)
   @ApiOperation({
     summary: 'Atualizar status do pedido',
     description: `Avança o status (RF06/RF07). Transições válidas:
@@ -264,13 +265,14 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
     @Body() dto: UpdateOrderStatusDto,
     @CurrentPizzeria() pizzeriaId: string,
     @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() pizzeriaRole: PizzeriaUserRole,
   ) {
-    return this.ordersService.updateStatus(pizzeriaId, id, dto, user.sub, user.role);
+    return this.ordersService.updateStatus(pizzeriaId, id, dto, user.sub, pizzeriaRole);
   }
 
   @Patch(':id/items/:itemId/cancel')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Cancelar item individual do pedido',
     description: 'Marca o item como cancelado e recalcula os totais. Não é permitido cancelar o último item ativo (cancele o pedido inteiro).',
@@ -292,16 +294,16 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
 
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Cancelar pedido (RF08)',
     description: `Cancela o pedido com motivo obrigatório. Registrado em auditoria.
 
-**RN05:** cancelamento de pedido já pago (\`paymentStatus = paid\`) é restrito a Admin/Owner.`,
+**RN05:** cancelamento de pedido já pago (\`paymentStatus = paid\`) é restrito ao Admin da unidade.`,
   })
   @ApiParam({ name: 'id', description: 'UUID do pedido' })
   @ApiResponse({ status: 200, description: 'Pedido cancelado' })
-  @ApiResponse({ status: 403, description: 'Pagamento já registrado — requer Admin/Owner (RN05)' })
+  @ApiResponse({ status: 403, description: 'Pagamento já registrado — requer Admin da unidade (RN05)' })
   @ApiResponse({ status: 404, description: 'Pedido não encontrado' })
   @ApiResponse({ status: 422, description: 'Status terminal — não pode ser cancelado' })
   cancel(
@@ -309,13 +311,14 @@ Os totais são recalculados automaticamente: subtotal, desconto do cupom origina
     @Body() dto: CancelOrderDto,
     @CurrentPizzeria() pizzeriaId: string,
     @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() pizzeriaRole: PizzeriaUserRole,
   ) {
-    return this.ordersService.cancel(pizzeriaId, id, dto, user.sub, user.role as UserRole);
+    return this.ordersService.cancel(pizzeriaId, id, dto, user.sub, pizzeriaRole);
   }
 
   @Patch(':id/payment')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa)
   @ApiOperation({
     summary: 'Registrar pagamento',
     description: 'Registra forma de pagamento e marca como pago. Para `cash`, informe `amountPaid` para validar que cobre o total.',

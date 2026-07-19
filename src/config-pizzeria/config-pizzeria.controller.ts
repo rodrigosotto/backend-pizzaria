@@ -7,8 +7,8 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaUserRole } from '@prisma/client';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
@@ -30,7 +30,7 @@ export class ConfigPizzeriaController {
   }
 
   @Patch()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({ summary: 'Atualizar configurações da pizzaria' })
   updateConfig(
     @CurrentPizzeria() pizzeriaId: string,

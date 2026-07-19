@@ -17,7 +17,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import type { JwtPayload } from './estoque.service';
 import { EstoqueService } from './estoque.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
@@ -25,7 +25,7 @@ import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
 @ApiTags('Estoque — Fornecedores')
 @ApiBearerAuth('access-token')
@@ -38,7 +38,7 @@ export class SuppliersController {
   constructor(private readonly estoqueService: EstoqueService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar fornecedores',
     description: 'Retorna todos os fornecedores da pizzaria. Filtro opcional por status ativo.',
@@ -54,7 +54,7 @@ export class SuppliersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Buscar fornecedor por ID',
     description: 'Retorna o fornecedor com a lista de insumos vinculados a ele.',
@@ -70,7 +70,7 @@ export class SuppliersController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Cadastrar fornecedor (RF82)',
     description: 'Cadastro completo: razão social, CNPJ, representante, telefone, e-mail e categorias de insumos fornecidos.',
@@ -85,7 +85,7 @@ export class SuppliersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Atualizar fornecedor',
     description: 'Atualiza dados do fornecedor. Use `isActive: false` para desativar.',
@@ -103,7 +103,7 @@ export class SuppliersController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Remover fornecedor',
     description: 'Remove o fornecedor. Bloqueado se houver insumos vinculados — desvincule-os antes ou use `isActive: false`.',
@@ -121,7 +121,7 @@ export class SuppliersController {
   }
 
   @Get(':id/purchases')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Histórico de compras do fornecedor (RF84)',
     description: 'Lista todos os movimentos de entrada (`entry`) dos insumos vinculados a este fornecedor, em ordem cronológica decrescente. Representa o histórico de compras realizadas com ele.',

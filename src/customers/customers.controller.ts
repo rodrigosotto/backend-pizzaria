@@ -21,11 +21,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { PizzeriaUserRole } from '@prisma/client';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CustomersService } from './customers.service';
 import type { JwtPayload } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -46,7 +46,7 @@ export class CustomersController {
   // ── Customers ─────────────────────────────────────────────────────────────
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar clientes da pizzaria',
     description: 'Retorna todos os clientes com seus endereços. Use `?search=` para busca combinada por nome, telefone ou CPF (case-insensitive).',
@@ -61,7 +61,7 @@ export class CustomersController {
   }
 
   @Get('by-phone/:phone')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Busca rápida por telefone',
     description: 'Busca um cliente pelo número de telefone exato. Use este endpoint ao abrir um novo pedido para identificar o cliente rapidamente sem listar todos (RF54). Retorna cliente com endereços.',
@@ -74,7 +74,7 @@ export class CustomersController {
   }
 
   @Get('export')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({
     summary: 'Exportar lista de clientes em CSV (RF55)',
     description: 'Retorna arquivo CSV com nome, telefone, CPF, email, selos e data de cadastro. Use `?search=` para filtrar.',
@@ -94,7 +94,7 @@ export class CustomersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Perfil completo do cliente',
     description: 'Retorna os dados do cliente com todos os endereços e os últimos 20 pedidos ordenados por data decrescente (RF51).',
@@ -107,7 +107,7 @@ export class CustomersController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Cadastrar cliente',
     description: 'Cria um novo cliente na pizzaria. O telefone é a chave de identificação única por pizzaria — não é possível ter dois clientes com o mesmo telefone no mesmo estabelecimento (RF50).',
@@ -124,7 +124,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Atualizar dados do cliente',
     description: 'Atualiza parcialmente os dados do cliente. Use `isBlacklisted: true` para bloquear pedidos do cliente (RF53). Use `loyaltyStamps` para ajuste manual de selos de fidelidade (RF52).',
@@ -144,7 +144,7 @@ export class CustomersController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover cliente',
@@ -165,7 +165,7 @@ export class CustomersController {
   // ── Addresses ─────────────────────────────────────────────────────────────
 
   @Get(':id/addresses')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Listar endereços do cliente',
     description: 'Retorna todos os endereços do cliente com o endereço padrão primeiro.',
@@ -178,7 +178,7 @@ export class CustomersController {
   }
 
   @Post(':id/addresses')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Adicionar endereço de entrega',
     description: 'Adiciona um novo endereço ao cliente. Se `isDefault: true`, o endereço anterior padrão é desmarcado automaticamente em transação.',
@@ -197,7 +197,7 @@ export class CustomersController {
   }
 
   @Patch(':id/addresses/:addressId')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Atualizar endereço',
     description: 'Atualiza parcialmente um endereço. Se `isDefault: true`, o endereço anterior padrão é desmarcado automaticamente.',
@@ -218,7 +218,7 @@ export class CustomersController {
   }
 
   @Delete(':id/addresses/:addressId')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Remover endereço',

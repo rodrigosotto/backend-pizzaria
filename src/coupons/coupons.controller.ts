@@ -11,8 +11,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
-import { Roles } from '../modules/auth/decorators/roles.decorator';
+import { PizzeriaUserRole } from '@prisma/client';
+import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
@@ -30,7 +30,7 @@ export class CouponsController {
   constructor(private readonly couponsService: CouponsService) {}
 
   @Get()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({ summary: 'Listar cupons da pizzaria' })
   @ApiQuery({ name: 'active', required: false, type: Boolean })
   list(
@@ -42,7 +42,7 @@ export class CouponsController {
   }
 
   @Get(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({ summary: 'Buscar cupom por ID' })
   findById(
     @CurrentPizzeria() pizzeriaId: string,
@@ -52,7 +52,7 @@ export class CouponsController {
   }
 
   @Post()
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({ summary: 'Criar cupom' })
   create(
     @CurrentPizzeria() pizzeriaId: string,
@@ -63,7 +63,7 @@ export class CouponsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @ApiOperation({ summary: 'Atualizar cupom' })
   update(
     @CurrentPizzeria() pizzeriaId: string,
@@ -75,7 +75,7 @@ export class CouponsController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.owner, UserRole.admin)
+  @PizzeriaRoles(PizzeriaUserRole.admin)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Desativar cupom (soft delete)' })
   remove(
@@ -87,7 +87,7 @@ export class CouponsController {
   }
 
   @Post('validate')
-  @Roles(UserRole.owner, UserRole.admin, UserRole.atendente, UserRole.caixa)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente, PizzeriaUserRole.caixa)
   @ApiOperation({ summary: 'Validar e calcular desconto de um cupom' })
   validate(
     @CurrentPizzeria() pizzeriaId: string,
