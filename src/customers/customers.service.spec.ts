@@ -6,6 +6,7 @@ import { AuditService } from '../modules/audit/audit.service';
 
 describe('CustomersService - exportCsv', () => {
   let service: CustomersService;
+  // Mock PrismaService with necessary methods for testing
   let mockPrisma: any;
 
   beforeEach(async () => {
