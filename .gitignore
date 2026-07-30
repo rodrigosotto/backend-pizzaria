@@ -56,3 +56,9 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# Claude Code skills (vendored de mattpocock/skills — local, nao versionado)
+/.claude/skills/grill-me/
+/.claude/skills/grill-with-docs/
+/.claude/skills/grilling/
+/.claude/skills/domain-modeling/

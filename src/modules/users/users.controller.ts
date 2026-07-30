@@ -101,7 +101,7 @@ export class UsersController {
     summary: 'Upload de avatar do usuário',
     description: 'Faz upload de uma imagem para o Supabase Storage e atualiza `avatarUrl`. ' +
       'O próprio usuário pode alterar seu avatar; owner/admin podem alterar o de qualquer usuário. ' +
-      'Formatos aceitos: JPEG, PNG, WebP, GIF. Tamanho máximo: 5MB.',
+      'Formatos aceitos: JPEG e PNG. Tamanho máximo: 1MB.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

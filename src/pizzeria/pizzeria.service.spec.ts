@@ -38,6 +38,21 @@ describe('PizzeriaService — sincronização de entregadores', () => {
         email: 'motoboy1@pizzaria.test',
         phone: '11999999999',
       })),
+      update: jest.fn(async () => ({
+        id: DELIVERER_ID,
+        name: 'Motoboy Um',
+        email: 'motoboy1@pizzaria.test',
+        phone: '11999999999',
+        cpf: '70000000108',
+        street: 'Rua Demonstração',
+        addressNumber: '101',
+        neighborhood: 'Centro',
+        zipCode: '01001000',
+        city: 'São Paulo',
+        state: 'SP',
+        country: 'Brasil',
+        avatarUrl: null,
+      })),
     };
     const prisma = {
       db: {

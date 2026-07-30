@@ -1,6 +1,7 @@
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { INestApplication } from '@nestjs/common';
 import { Server, ServerOptions } from 'socket.io';
+import { parseCorsOrigins } from '../../core/config/cors.config';
 
 /**
  * IoAdapter compatível com Fastify.
@@ -19,8 +20,8 @@ export class FastifyIoAdapter extends IoAdapter {
     if (this.ioServer) return this.ioServer;
 
     this.ioServer = new Server(this.app.getHttpServer(), {
-      cors: { origin: process.env.CORS_ORIGIN ?? '*' },
       ...options,
+      cors: { origin: parseCorsOrigins() },
     });
     return this.ioServer;
   }

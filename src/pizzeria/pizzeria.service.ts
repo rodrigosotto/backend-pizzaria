@@ -265,6 +265,14 @@ export class PizzeriaService {
             name: true,
             email: true,
             phone: true,
+            cpf: true,
+            street: true,
+            addressNumber: true,
+            neighborhood: true,
+            zipCode: true,
+            city: true,
+            state: true,
+            country: true,
             avatarUrl: true,
           },
         },
@@ -313,6 +321,14 @@ export class PizzeriaService {
         where: { id: newUserId },
         data: {
           role: UserRole[dto.role] ?? UserRole.atendente,
+          cpf: dto.cpf,
+          street: dto.street,
+          addressNumber: dto.addressNumber,
+          neighborhood: dto.neighborhood,
+          zipCode: dto.zipCode,
+          city: dto.city,
+          state: dto.state,
+          country: dto.country,
         },
         select: { id: true, name: true, email: true, phone: true },
       });
@@ -357,6 +373,14 @@ export class PizzeriaService {
             name: true,
             email: true,
             phone: true,
+            cpf: true,
+            street: true,
+            addressNumber: true,
+            neighborhood: true,
+            zipCode: true,
+            city: true,
+            state: true,
+            country: true,
             avatarUrl: true,
           },
         },
@@ -418,24 +442,42 @@ export class PizzeriaService {
   ) {
     await this.assertAccess(pizzeriaId, user.sub, [PizzeriaUserRole.admin]);
 
-    if (targetUserId === user.sub) {
-      throw new ForbiddenException('Não é possível alterar o próprio role');
-    }
-
     const link = await this.prisma.db.userPizzeriaRole.findUnique({
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
       select: {
         id: true,
         role: true,
         isActive: true,
-        user: { select: { id: true, name: true, phone: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            cpf: true,
+            street: true,
+            addressNumber: true,
+            neighborhood: true,
+            zipCode: true,
+            city: true,
+            state: true,
+            country: true,
+            avatarUrl: true,
+          },
+        },
       },
     });
 
     if (!link || !link.isActive)
       throw new NotFoundException('Vínculo não encontrado');
 
-    const before = { role: link.role };
+    if (targetUserId === user.sub && dto.role !== link.role) {
+      throw new ForbiddenException('Não é possível alterar a própria função na unidade');
+    }
+
+    const nextName = dto.name ?? link.user.name;
+    const nextPhone = dto.phone ?? link.user.phone;
+    const before = { role: link.role, ...link.user };
 
     const membershipUpdate = this.prisma.db.userPizzeriaRole.update({
       where: { userId_pizzeriaId: { userId: targetUserId, pizzeriaId } },
@@ -443,42 +485,75 @@ export class PizzeriaService {
       select: {
         id: true,
         role: true,
-        user: {
-          select: { id: true, name: true, email: true, phone: true },
-        },
+        invitedAt: true,
+        acceptedAt: true,
       },
     });
 
-    let updated: Awaited<typeof membershipUpdate>;
+    const profileUpdate = this.prisma.db.user.update({
+      where: { id: targetUserId },
+      data: {
+        name: dto.name,
+        phone: dto.phone,
+        cpf: dto.cpf,
+        street: dto.street,
+        addressNumber: dto.addressNumber,
+        neighborhood: dto.neighborhood,
+        zipCode: dto.zipCode,
+        city: dto.city,
+        state: dto.state,
+        country: dto.country,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        cpf: true,
+        street: true,
+        addressNumber: true,
+        neighborhood: true,
+        zipCode: true,
+        city: true,
+        state: true,
+        country: true,
+        avatarUrl: true,
+      },
+    });
+
+    let membership: Awaited<typeof membershipUpdate>;
+    let updatedUser: Awaited<typeof profileUpdate>;
     if (dto.role === PizzeriaUserRole.entregador) {
-      if (!link.user.phone) {
+      if (!nextPhone) {
         throw new BadRequestException(
           'O usuário precisa ter telefone para assumir a função de entregador',
         );
       }
 
-      [updated] = await this.prisma.db.$transaction([
+      [membership, updatedUser] = await this.prisma.db.$transaction([
         membershipUpdate,
+        profileUpdate,
         this.prisma.db.deliverer.upsert({
           where: {
             pizzeriaId_userId: { pizzeriaId, userId: targetUserId },
           },
           update: {
-            name: link.user.name,
-            phone: link.user.phone,
+            name: nextName,
+            phone: nextPhone,
             isActive: true,
           },
           create: {
             pizzeriaId,
             userId: targetUserId,
-            name: link.user.name,
-            phone: link.user.phone,
+            name: nextName,
+            phone: nextPhone,
           },
         }),
       ]);
     } else {
-      [updated] = await this.prisma.db.$transaction([
+      [membership, updatedUser] = await this.prisma.db.$transaction([
         membershipUpdate,
+        profileUpdate,
         this.prisma.db.deliverer.updateMany({
           where: { pizzeriaId, userId: targetUserId, isActive: true },
           data: { isActive: false },
@@ -487,16 +562,16 @@ export class PizzeriaService {
     }
 
     await this.audit.log({
-      action: 'PIZZERIA_USER_ROLE_UPDATED',
+      action: 'PIZZERIA_USER_UPDATED',
       entity: 'UserPizzeriaRole',
-      entityId: updated.id,
+      entityId: membership.id,
       userId: user.sub,
       pizzeriaId,
       before: before as Record<string, unknown>,
-      after: { role: dto.role } as Record<string, unknown>,
+      after: { role: dto.role, ...updatedUser } as Record<string, unknown>,
     });
 
-    return updated;
+    return { ...membership, user: updatedUser };
   }
 
   async removeUser(pizzeriaId: string, targetUserId: string, user: JwtPayload) {

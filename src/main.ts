@@ -11,6 +11,7 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './core/filters/http-exception.filter';
 import { TransformInterceptor } from './core/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './core/interceptors/logging.interceptor';
+import { buildCorsOptions } from './core/config/cors.config';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -28,11 +29,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   // ── CORS ───────────────────────────────────────────────────────────────────
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? '*',
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Pizzeria-Id'],
-  });
+  app.enableCors(buildCorsOptions());
 
   // ── Global pipes ───────────────────────────────────────────────────────────
   app.useGlobalPipes(
