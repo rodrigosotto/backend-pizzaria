@@ -581,7 +581,7 @@ export class OrdersService {
 
     if (order.status !== OrderStatus.accepted) {
       throw new UnprocessableEntityException(
-        `Edição de itens só é permitida no status "accepted". Status atual: "${order.status}"`,
+        `A Edição de itens só é permitida no status "accepted". Status atual: "${order.status}"`,
       );
     }
 
