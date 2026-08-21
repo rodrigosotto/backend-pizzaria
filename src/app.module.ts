@@ -16,6 +16,7 @@ import { OrdersModule } from './orders/orders.module';
 import { EstoqueModule } from './estoque/estoque.module';
 import { CaixaModule } from './caixa/caixa.module';
 import { ChatModule } from './chat/chat.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ReportsModule } from './reports/reports.module';
 import { ConfigPizzeriaModule } from './config-pizzeria/config-pizzeria.module';
 import { CouponsModule } from './coupons/coupons.module';
@@ -45,6 +46,7 @@ import { CepModule } from './shared/cep/cep.module';
     EstoqueModule,
     CaixaModule,
     ChatModule,
+    WhatsAppModule,
     ReportsModule,
     ConfigPizzeriaModule,
     CouponsModule,

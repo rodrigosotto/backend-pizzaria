@@ -53,6 +53,7 @@ A arquitetura é **multi-tenant**: cada pizzaria tem seu próprio espaço isolad
 - [ ] **Estoque** — Controle de insumos, fornecedores, movimentações
 - [ ] **Caixa** — Abertura/fechamento, sangrias, conferência
 - [ ] **Chat** — Atendimento ao cliente com templates de resposta
+- [x] **Chat + WhatsApp Cloud API** — Webhook, atendimento multi-tenant, envio, templates oficiais, retry e realtime
 - [ ] **Relatórios** — Dashboard financeiro, vendas, performance
 
 ---
@@ -252,6 +253,12 @@ npm run dev
 ---
 
 ## Endpoints disponíveis
+
+## Operação Chat + WhatsApp
+
+O runbook de configuração da Meta, homologação, produção, monitoramento, troubleshooting e rollback está em [`docs/chat-whatsapp-production.md`](docs/chat-whatsapp-production.md).
+
+O endpoint público `GET /api/v1/health` verifica a disponibilidade da API e do PostgreSQL. O webhook público da Meta permanece em `/webhooks/whatsapp`, sem prefixo `/api/v1`, conforme a configuração atual do servidor.
 
 ### Auth — `/api/v1/auth`
 

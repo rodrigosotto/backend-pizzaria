@@ -4,7 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import multipart from '@fastify/multipart';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { FastifyIoAdapter } from './infra/adapters/fastify-io.adapter';
 import { AppModule } from './app.module';
@@ -17,6 +17,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: true }),
+    { rawBody: true },
   );
 
   // ── Multipart (file uploads) ───────────────────────────────────────────────
@@ -26,7 +27,12 @@ async function bootstrap() {
   app.useWebSocketAdapter(new FastifyIoAdapter(app));
 
   // ── Global prefix ──────────────────────────────────────────────────────────
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      { path: 'webhooks/whatsapp', method: RequestMethod.GET },
+      { path: 'webhooks/whatsapp', method: RequestMethod.POST },
+    ],
+  });
 
   // ── CORS ───────────────────────────────────────────────────────────────────
   app.enableCors(buildCorsOptions());
