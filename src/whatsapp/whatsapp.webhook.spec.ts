@@ -63,6 +63,13 @@ describe('WhatsApp webhook', () => {
     expect(response.send).toHaveBeenCalledWith('challenge-fixture');
   });
 
+  it('accepts Meta verification aliases normalized with underscores', () => {
+    const response = reply();
+    controller.verify({ hub_mode: 'subscribe', hub_verify_token: verificationToken, hub_challenge: 'challenge-alias' }, response);
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.send).toHaveBeenCalledWith('challenge-alias');
+  });
+
   it('rejects an invalid verification token', () => {
     expect(() => service.verify('subscribe', 'wrong-token', 'challenge-fixture')).toThrow('Webhook verification failed');
   });

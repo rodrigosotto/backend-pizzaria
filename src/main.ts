@@ -24,8 +24,8 @@ type FastifyLogRequest = {
 function sanitizeRequestUrl(rawUrl: string): string {
   try {
     const url = new URL(rawUrl, 'http://localhost');
-    if (url.searchParams.has('hub.verify_token')) {
-      url.searchParams.set('hub.verify_token', '[REDACTED]');
+    for (const key of ['hub.verify_token', 'hub_verify_token']) {
+      if (url.searchParams.has(key)) url.searchParams.set(key, '[REDACTED]');
     }
     return `${url.pathname}${url.search}`;
   } catch {
