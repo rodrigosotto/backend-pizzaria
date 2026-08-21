@@ -16,6 +16,12 @@ export class UpdatePizzeriaDto {
   @MaxLength(100)
   tradeName?: string;
 
+  @ApiPropertyOptional({ example: 'João Silva ME' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  companyName?: string;
+
   @ApiPropertyOptional({ example: '12.345.678/0001-90' })
   @IsOptional()
   @IsString()
