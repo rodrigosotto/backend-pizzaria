@@ -54,7 +54,7 @@ describe('WhatsAppInboundService', () => {
   it('creates customer, conversation and inbound message atomically for a new contact', async () => {
     const tx = makeTx();
     const { service, prisma } = makeService(tx);
-    await expect(service.process(parsed())).resolves.toEqual({ processed: 1, duplicates: 0, skipped: 0 });
+    await expect(service.process(parsed())).resolves.toEqual({ processed: 1, duplicates: 0, skipped: 0, statusesUpdated: 0 });
     expect(prisma.db.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.customer.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { pizzeriaId_phone: { pizzeriaId: 'pizzeria-1', phone: '5511999999999' } },
@@ -79,7 +79,7 @@ describe('WhatsAppInboundService', () => {
   it('reuses existing customer and conversation and ignores a duplicate wamid', async () => {
     const tx = makeTx({ existingMessage: true, existingCustomer: true, existingConversation: true });
     const { service } = makeService(tx);
-    await expect(service.process(parsed())).resolves.toEqual({ processed: 0, duplicates: 1, skipped: 0 });
+    await expect(service.process(parsed())).resolves.toEqual({ processed: 0, duplicates: 1, skipped: 0, statusesUpdated: 0 });
     expect(tx.chatMessage.create).not.toHaveBeenCalled();
     expect(tx.chatConversation.update).not.toHaveBeenCalled();
   });
@@ -95,7 +95,7 @@ describe('WhatsAppInboundService', () => {
   it('skips unsupported media while preserving the webhook acknowledgement path', async () => {
     const tx = makeTx();
     const { service } = makeService(tx);
-    await expect(service.process(parsed({ messages: [], messageIds: [message.wamid] }))).resolves.toEqual({ processed: 0, duplicates: 0, skipped: 1 });
+    await expect(service.process(parsed({ messages: [], messageIds: [message.wamid] }))).resolves.toEqual({ processed: 0, duplicates: 0, skipped: 1, statusesUpdated: 0 });
     expect(tx.chatMessage.create).not.toHaveBeenCalled();
   });
 
@@ -104,5 +104,42 @@ describe('WhatsAppInboundService', () => {
     const { service, prisma } = makeService(tx);
     await service.process(parsed({ messages: [message, { ...message, wamid: 'wamid.2', text: 'Segundo' }], messageIds: ['wamid.1', 'wamid.2'] }));
     expect(prisma.db.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists Meta delivery status in the tenant conversation and ignores regressions', async () => {
+    const tx = makeTx({ existingMessage: true });
+    const prisma = {
+      db: {
+        $transaction: jest.fn((callback: (value: typeof tx) => Promise<unknown>) => callback(tx)),
+        whatsAppAccount: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'account-1', pizzeriaId: 'pizzeria-1', businessAccountId: 'business-1' }),
+        },
+        chatMessage: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'message-1', status: ChatMessageStatus.sent, conversationId: 'conversation-1' }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+      },
+    } as unknown as PrismaService;
+    const gateway = { notifyMessageUpdated: jest.fn() } as any;
+    const { service } = makeService(tx);
+    const serviceWithStatus = new WhatsAppInboundService(prisma, gateway);
+    const result = await serviceWithStatus.process(parsed({
+      messages: [],
+      messageIds: [],
+      statuses: [{
+        businessAccountId: 'business-1',
+        phoneNumberId: 'phone-1',
+        wamid: 'wamid.1',
+        status: 'delivered',
+        timestamp: new Date('2026-08-20T12:01:00.000Z'),
+      }],
+    }));
+    expect(result).toEqual({ processed: 0, duplicates: 0, skipped: 0, statusesUpdated: 1 });
+    expect(prisma.db.chatMessage.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'message-1' },
+      data: expect.objectContaining({ status: 'delivered' }),
+    }));
+    expect(gateway.notifyMessageUpdated).toHaveBeenCalledWith('pizzeria-1', 'conversation-1', expect.objectContaining({ status: 'delivered' }));
+    expect(service).toBeDefined();
   });
 });

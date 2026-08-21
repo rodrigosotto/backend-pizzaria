@@ -247,30 +247,30 @@ model Pizzeria {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
-  owner            User               @relation("PizzeriaOwner", fields: [ownerId], references: [id])
-  userRoles        UserPizzeriaRole[]
-  config           PizzeriaConfig?
-  categories       ProductCategory[]
-  products         Product[]
-  crusts           Crust[]
-  combos           Combo[]
-  customers        Customer[]
-  tables           Table[]
-  deliverers       Deliverer[]
-  deliveryZones    DeliveryZone[]
-  orders           Order[]
-  stockItems       StockItem[]
-  suppliers        Supplier[]
-  cashSessions     CashSession[]
-  loyaltyPrograms  LoyaltyProgram[]
-  coupons          Coupon[]
-  conversations    ChatConversation[]
-  chatTemplates    ChatTemplate[]
+  owner             User               @relation("PizzeriaOwner", fields: [ownerId], references: [id])
+  userRoles         UserPizzeriaRole[]
+  config            PizzeriaConfig?
+  categories        ProductCategory[]
+  products          Product[]
+  crusts            Crust[]
+  combos            Combo[]
+  customers         Customer[]
+  tables            Table[]
+  deliverers        Deliverer[]
+  deliveryZones     DeliveryZone[]
+  orders            Order[]
+  stockItems        StockItem[]
+  suppliers         Supplier[]
+  cashSessions      CashSession[]
+  loyaltyPrograms   LoyaltyProgram[]
+  coupons           Coupon[]
+  conversations     ChatConversation[]
+  chatTemplates     ChatTemplate[]
   whatsappTemplates WhatsAppTemplate[]
-  printers         Printer[]
-  auditLogs        AuditLog[]
-  kdsItems         KdsItem[]
-  whatsappAccounts WhatsAppAccount[]
+  printers          Printer[]
+  auditLogs         AuditLog[]
+  kdsItems          KdsItem[]
+  whatsappAccounts  WhatsAppAccount[]
 
   @@map("pizzerias")
 }
@@ -833,31 +833,31 @@ model ChatConversation {
 
 /// Mensagens do chat interno
 model ChatMessage {
-  id                String               @id @default(uuid())
-  conversationId    String               @map("conversation_id")
-  content           String
+  id                  String               @id @default(uuid())
+  conversationId      String               @map("conversation_id")
+  content             String
   /// system | attendant | customer
-  senderType        String               @map("sender_type") @db.VarChar(20)
-  senderId          String?              @map("sender_id")
-  isAutomatic       Boolean              @default(false) @map("is_automatic")
-  channel           ChatChannel          @default(internal)
-  direction         ChatMessageDirection @default(outbound)
-  messageType       ChatMessageType      @default(text) @map("message_type")
-  externalMessageId String?              @map("external_message_id") @db.VarChar(255)
+  senderType          String               @map("sender_type") @db.VarChar(20)
+  senderId            String?              @map("sender_id")
+  isAutomatic         Boolean              @default(false) @map("is_automatic")
+  channel             ChatChannel          @default(internal)
+  direction           ChatMessageDirection @default(outbound)
+  messageType         ChatMessageType      @default(text) @map("message_type")
+  externalMessageId   String?              @map("external_message_id") @db.VarChar(255)
   /// Identificador WAMID da Meta; nullable para preservar mensagens internas.
-  wamid             String?              @unique @db.VarChar(255)
-  status            ChatMessageStatus    @default(sent)
-  statusUpdatedAt   DateTime?            @map("status_updated_at")
-  attempts          Int                 @default(0)
-  nextAttemptAt     DateTime?           @map("next_attempt_at")
-  processingStartedAt DateTime?         @map("processing_started_at")
-  correlationId     String?             @unique @map("correlation_id") @db.VarChar(100)
-  deliveryPayload   Json?               @map("delivery_payload")
-  errorCode         String?              @map("error_code") @db.VarChar(100)
-  errorMessage      String?              @map("error_message") @db.VarChar(500)
-  externalTimestamp DateTime?            @map("external_timestamp")
-  mediaId           String?              @map("media_id") @db.VarChar(255)
-  createdAt         DateTime             @default(now()) @map("created_at")
+  wamid               String?              @unique @db.VarChar(255)
+  status              ChatMessageStatus    @default(sent)
+  statusUpdatedAt     DateTime?            @map("status_updated_at")
+  attempts            Int                  @default(0)
+  nextAttemptAt       DateTime?            @map("next_attempt_at")
+  processingStartedAt DateTime?            @map("processing_started_at")
+  correlationId       String?              @unique @map("correlation_id") @db.VarChar(100)
+  deliveryPayload     Json?                @map("delivery_payload")
+  errorCode           String?              @map("error_code") @db.VarChar(100)
+  errorMessage        String?              @map("error_message") @db.VarChar(500)
+  externalTimestamp   DateTime?            @map("external_timestamp")
+  mediaId             String?              @map("media_id") @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at")
 
   conversation ChatConversation        @relation(fields: [conversationId], references: [id])
   attachments  ChatMessageAttachment[]
@@ -873,14 +873,15 @@ model ChatMessage {
 /// Conta WhatsApp Business associada a uma pizzaria.
 /// Tokens e secrets permanecem na configuração segura do backend.
 model WhatsAppAccount {
-  id                String                @id @default(uuid())
-  pizzeriaId        String                @unique @map("pizzeria_id")
-  businessAccountId String?               @map("business_account_id") @db.VarChar(255)
-  phoneNumberId     String                @unique @map("phone_number_id") @db.VarChar(255)
-  metaAppId         String?               @map("meta_app_id") @db.VarChar(255)
-  status            WhatsAppAccountStatus @default(pending)
-  createdAt         DateTime              @default(now()) @map("created_at")
-  updatedAt         DateTime              @updatedAt @map("updated_at")
+  id                 String                @id @default(uuid())
+  pizzeriaId         String                @unique @map("pizzeria_id")
+  businessAccountId  String?               @map("business_account_id") @db.VarChar(255)
+  phoneNumberId      String                @unique @map("phone_number_id") @db.VarChar(255)
+  displayPhoneNumber String?               @map("display_phone_number") @db.VarChar(32)
+  metaAppId          String?               @map("meta_app_id") @db.VarChar(255)
+  status             WhatsAppAccountStatus @default(pending)
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
 
   pizzeria      Pizzeria           @relation(fields: [pizzeriaId], references: [id])
   conversations ChatConversation[]
@@ -893,19 +894,19 @@ model WhatsAppAccount {
 /// Template oficial aprovado/configurado na WhatsApp Business Platform.
 /// É separado de ChatTemplate, que representa apenas quick replies internas.
 model WhatsAppTemplate {
-  id                String                    @id @default(uuid())
-  pizzeriaId        String                    @map("pizzeria_id")
-  whatsappAccountId String                    @map("whatsapp_account_id")
-  name              String                    @db.VarChar(512)
-  language          String                    @db.VarChar(35)
+  id                String                   @id @default(uuid())
+  pizzeriaId        String                   @map("pizzeria_id")
+  whatsappAccountId String                   @map("whatsapp_account_id")
+  name              String                   @db.VarChar(512)
+  language          String                   @db.VarChar(35)
   category          WhatsAppTemplateCategory
-  status            WhatsAppTemplateStatus    @default(pending)
-  externalId        String?                   @map("external_id") @db.VarChar(255)
-  parameterCount    Int                       @default(0) @map("parameter_count")
+  status            WhatsAppTemplateStatus   @default(pending)
+  externalId        String?                  @map("external_id") @db.VarChar(255)
+  parameterCount    Int                      @default(0) @map("parameter_count")
   components        Json?
   metadata          Json?
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
 
   pizzeria        Pizzeria        @relation(fields: [pizzeriaId], references: [id])
   whatsappAccount WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id])

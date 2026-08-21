@@ -32,7 +32,7 @@ export class WhatsAppWebhookController {
     let inbound;
     try {
       inbound = result.duplicate
-        ? { processed: 0, duplicates: result.messages.length, skipped: 0 }
+        ? { processed: 0, duplicates: result.messages.length + (result.statuses?.length ?? 0), skipped: 0, statusesUpdated: 0 }
         : await this.inboundService.process(result);
     } catch (error) {
       this.webhookService.releaseRegistration(rawBody, result);

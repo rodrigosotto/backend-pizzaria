@@ -1,13 +1,14 @@
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ChatChannel, ChatMessageDirection, ChatMessageStatus, ChatMessageType, Prisma } from '@prisma/client';
 import { PrismaService } from '../infra/database/prisma.service';
-import { WhatsAppInboundMessage, ParsedWhatsAppWebhook } from './whatsapp.webhook.types';
+import { WhatsAppInboundMessage, ParsedWhatsAppWebhook, WhatsAppStatusUpdate } from './whatsapp.webhook.types';
 import { ChatGateway } from '../chat/chat.gateway';
 
 export interface WhatsAppInboundResult {
   processed: number;
   duplicates: number;
   skipped: number;
+  statusesUpdated: number;
 }
 
 type PersistedInboundResult =
@@ -38,8 +39,53 @@ export class WhatsAppInboundService {
       await this.publishCreated(result);
     }
 
-    this.logger.debug(`Processed ${processed} WhatsApp inbound message(s), ${duplicates} duplicate(s), ${skipped} skipped`);
-    return { processed, duplicates, skipped };
+    let statusesUpdated = 0;
+    for (const status of parsed.statuses ?? []) {
+      if (await this.persistStatus(status)) statusesUpdated += 1;
+    }
+
+    this.logger.debug(`Processed ${processed} WhatsApp inbound message(s), ${duplicates} duplicate(s), ${skipped} skipped, ${statusesUpdated} status update(s)`);
+    return { processed, duplicates, skipped, statusesUpdated };
+  }
+
+  private async persistStatus(status: WhatsAppStatusUpdate): Promise<boolean> {
+    const account = await this.prisma.db.whatsAppAccount.findUnique({
+      where: { phoneNumberId: status.phoneNumberId },
+      select: { id: true, pizzeriaId: true, businessAccountId: true },
+    });
+    if (!account || (account.businessAccountId && account.businessAccountId !== status.businessAccountId)) return false;
+
+    const message = await this.prisma.db.chatMessage.findFirst({
+      where: {
+        wamid: status.wamid,
+        conversation: { pizzeriaId: account.pizzeriaId, whatsappAccountId: account.id },
+      },
+      select: { id: true, status: true, conversationId: true },
+    });
+    if (!message) return false;
+
+    const nextStatus = status.status;
+    const currentRank = this.statusRank(message.status);
+    const nextRank = this.statusRank(nextStatus);
+    if (nextStatus !== 'failed' && nextRank < currentRank) return false;
+
+    await this.prisma.db.chatMessage.update({
+      where: { id: message.id },
+      data: {
+        status: nextStatus,
+        statusUpdatedAt: status.timestamp,
+        externalTimestamp: status.timestamp,
+        errorCode: nextStatus === 'failed' ? status.errorCode ?? 'provider' : null,
+        errorMessage: nextStatus === 'failed' ? status.errorMessage ?? 'WhatsApp delivery failed' : null,
+      },
+    });
+
+    this.chatGateway?.notifyMessageUpdated(account.pizzeriaId, message.conversationId, { ...message, status: nextStatus, statusUpdatedAt: status.timestamp });
+    return true;
+  }
+
+  private statusRank(status: string): number {
+    return ({ queued: 0, processing: 1, sent: 2, delivered: 3, read: 4, failed: 5 } as Record<string, number>)[status] ?? 0;
   }
 
   private async persistMessage(message: WhatsAppInboundMessage): Promise<PersistedInboundResult> {

@@ -9,6 +9,7 @@ export interface ParsedWhatsAppWebhook {
   messageIds: string[];
   statusIds: string[];
   messages: WhatsAppInboundMessage[];
+  statuses?: WhatsAppStatusUpdate[];
 }
 
 export interface WhatsAppWebhookResult extends ParsedWhatsAppWebhook {
@@ -30,4 +31,17 @@ export interface WhatsAppInboundMessage {
   type: 'text';
   text: string;
   profileName?: string;
+}
+
+export type WhatsAppDeliveryStatus = 'sent' | 'delivered' | 'read' | 'failed';
+
+export interface WhatsAppStatusUpdate {
+  businessAccountId: string;
+  phoneNumberId: string;
+  wamid: string;
+  status: WhatsAppDeliveryStatus;
+  timestamp: Date;
+  recipientId?: string;
+  errorCode?: string;
+  errorMessage?: string;
 }

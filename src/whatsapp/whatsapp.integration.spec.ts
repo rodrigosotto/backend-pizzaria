@@ -122,6 +122,7 @@ describe('WhatsApp webhook → inbound service → Prisma integration', () => {
       processed: 1,
       duplicates: 0,
       skipped: 0,
+      statusesUpdated: 0,
     });
 
     const secondReply = {
@@ -135,6 +136,7 @@ describe('WhatsApp webhook → inbound service → Prisma integration', () => {
       processed: 0,
       duplicates: 1,
       skipped: 0,
+      statusesUpdated: 0,
     });
     expect(tx.chatMessage.create).toHaveBeenCalledTimes(1);
   });

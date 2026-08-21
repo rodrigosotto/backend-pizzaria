@@ -43,7 +43,7 @@ describe('WhatsApp webhook', () => {
     };
     const config = { get: jest.fn((key: string) => values[key]) } as unknown as ConfigService;
     service = new WhatsAppWebhookService(config);
-    inbound = { process: jest.fn().mockResolvedValue({ processed: 1, duplicates: 0, skipped: 0 }) };
+    inbound = { process: jest.fn().mockResolvedValue({ processed: 1, duplicates: 0, skipped: 0, statusesUpdated: 0 }) };
     controller = new WhatsAppWebhookController(service, inbound as never);
   });
 
@@ -72,8 +72,32 @@ describe('WhatsApp webhook', () => {
     const response = reply();
     await controller.receive({ rawBody: body, body: payload, headers: { 'x-hub-signature-256': signature(body) } } as unknown as any, response);
     expect(response.status).toHaveBeenCalledWith(200);
-    expect(response.send).toHaveBeenCalledWith({ received: true, duplicate: false, processed: 1, duplicates: 0, skipped: 0 });
+    expect(response.send).toHaveBeenCalledWith({ received: true, duplicate: false, processed: 1, duplicates: 0, skipped: 0, statusesUpdated: 0 });
     expect(inbound.process).toHaveBeenCalledTimes(1);
+  });
+
+  it('parses Meta delivery status events without trusting tenant ids from the payload', () => {
+    const statusPayload = {
+      ...payload,
+      entry: [{
+        id: 'business-account-fixture',
+        changes: [{
+          field: 'messages',
+          value: {
+            messaging_product: 'whatsapp',
+            metadata: { phone_number_id: 'phone-fixture' },
+            statuses: [{ id: 'wamid.fixture.1', status: 'delivered', timestamp: '1787227201', recipient_id: '5511999999999' }],
+          },
+        }],
+      }],
+    };
+    const parsed = service.parse(statusPayload);
+    expect(parsed.statuses).toEqual([expect.objectContaining({
+      businessAccountId: 'business-account-fixture',
+      phoneNumberId: 'phone-fixture',
+      wamid: 'wamid.fixture.1',
+      status: 'delivered',
+    })]);
   });
 
   it('rejects an invalid signature', async () => {
@@ -97,7 +121,7 @@ describe('WhatsApp webhook', () => {
     await controller.receive(request, first);
     await controller.receive(request, second);
     expect(second.status).toHaveBeenCalledWith(200);
-    expect(second.send).toHaveBeenCalledWith({ received: true, duplicate: true, processed: 0, duplicates: 1, skipped: 0 });
+    expect(second.send).toHaveBeenCalledWith({ received: true, duplicate: true, processed: 0, duplicates: 1, skipped: 0, statusesUpdated: 0 });
     expect(inbound.process).toHaveBeenCalledTimes(1);
   });
 

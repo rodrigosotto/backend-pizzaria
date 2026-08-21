@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { ParsedWhatsAppWebhook, WhatsAppInboundMessage, WhatsAppWebhookResult } from './whatsapp.webhook.types';
+import { ParsedWhatsAppWebhook, WhatsAppInboundMessage, WhatsAppStatusUpdate, WhatsAppWebhookResult } from './whatsapp.webhook.types';
 
 const META_OBJECT = 'whatsapp_business_account';
 const MAX_DEDUPE_ENTRIES = 10_000;
@@ -71,6 +71,7 @@ export class WhatsAppWebhookService {
     const messageIds: string[] = [];
     const statusIds: string[] = [];
     const messages: WhatsAppInboundMessage[] = [];
+    const statuses: WhatsAppStatusUpdate[] = [];
     let changeCount = 0;
     for (const entry of body.entry) {
       if (!this.isRecord(entry) || typeof entry.id !== 'string' || !Array.isArray(entry.changes) || entry.changes.length === 0) {
@@ -84,9 +85,10 @@ export class WhatsAppWebhookService {
         this.collectIds(change.value.messages, messageIds);
         this.collectIds(change.value.statuses, statusIds);
         this.collectMessages(entry.id, change.value, messages);
+        this.collectStatuses(entry.id, change.value, statuses);
       }
     }
-    return { entryCount: body.entry.length, changeCount, messageIds, statusIds, messages };
+    return { entryCount: body.entry.length, changeCount, messageIds, statusIds, messages, statuses };
   }
 
   private collectIds(value: unknown, target: string[]): void {
@@ -143,6 +145,51 @@ export class WhatsAppWebhookService {
         type: 'text',
         text: item.text.body,
         ...(profileName ? { profileName } : {}),
+      });
+    }
+  }
+
+  private collectStatuses(
+    businessAccountId: string,
+    value: unknown,
+    target: WhatsAppStatusUpdate[],
+  ): void {
+    if (!this.isRecord(value) || value.statuses === undefined) return;
+    if (!Array.isArray(value.statuses)) throw new BadRequestException('Invalid WhatsApp status collection');
+    const metadata = value.metadata;
+    const phoneNumberId = this.isRecord(metadata) ? metadata.phone_number_id : undefined;
+    if (typeof phoneNumberId !== 'string' || phoneNumberId.length === 0 || phoneNumberId.length > 255) {
+      throw new BadRequestException('WhatsApp phone number id is required for status updates');
+    }
+
+    for (const item of value.statuses) {
+      if (!this.isRecord(item) || typeof item.id !== 'string' || item.id.length === 0 || item.id.length > 255) {
+        throw new BadRequestException('Invalid WhatsApp status id');
+      }
+      if (item.status !== 'sent' && item.status !== 'delivered' && item.status !== 'read' && item.status !== 'failed') {
+        throw new BadRequestException('Invalid WhatsApp message status');
+      }
+      if (typeof item.timestamp !== 'string' || !/^\d{1,13}$/.test(item.timestamp)) {
+        throw new BadRequestException('Invalid WhatsApp status timestamp');
+      }
+      const timestamp = new Date(Number(item.timestamp) * 1000);
+      if (!Number.isFinite(timestamp.getTime())) throw new BadRequestException('Invalid WhatsApp status timestamp');
+      const errors = Array.isArray(item.errors) ? item.errors[0] : undefined;
+      const errorCode = this.isRecord(errors) && (typeof errors.code === 'number' || typeof errors.code === 'string')
+        ? String(errors.code)
+        : undefined;
+      const errorMessage = this.isRecord(errors) && typeof errors.title === 'string'
+        ? errors.title.slice(0, 500)
+        : undefined;
+      target.push({
+        businessAccountId,
+        phoneNumberId,
+        wamid: item.id,
+        status: item.status,
+        timestamp,
+        ...(typeof item.recipient_id === 'string' ? { recipientId: item.recipient_id } : {}),
+        ...(errorCode ? { errorCode } : {}),
+        ...(errorMessage ? { errorMessage } : {}),
       });
     }
   }
