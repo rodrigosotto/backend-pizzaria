@@ -13,10 +13,42 @@ import { TransformInterceptor } from './core/interceptors/transform.interceptor'
 import { LoggingInterceptor } from './core/interceptors/logging.interceptor';
 import { buildCorsOptions } from './core/config/cors.config';
 
+type FastifyLogRequest = {
+  method: string;
+  url: string;
+  hostname?: string;
+  remoteAddress?: string;
+  remotePort?: number;
+};
+
+function sanitizeRequestUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl, 'http://localhost');
+    if (url.searchParams.has('hub.verify_token')) {
+      url.searchParams.set('hub.verify_token', '[REDACTED]');
+    }
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return rawUrl.split('?')[0];
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true }),
+    new FastifyAdapter({
+      logger: {
+        serializers: {
+          req: (request: FastifyLogRequest) => ({
+            method: request.method,
+            url: sanitizeRequestUrl(request.url),
+            hostname: request.hostname,
+            remoteAddress: request.remoteAddress,
+            remotePort: request.remotePort,
+          }),
+        },
+      },
+    }),
     { rawBody: true },
   );
 
