@@ -20,6 +20,9 @@ export interface WhatsAppVerificationQuery {
   'hub.mode'?: unknown;
   'hub.verify_token'?: unknown;
   'hub.challenge'?: unknown;
+  hub_mode?: unknown;
+  hub_verify_token?: unknown;
+  hub_challenge?: unknown;
 }
 
 export interface WhatsAppInboundMessage {

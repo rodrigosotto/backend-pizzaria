@@ -16,7 +16,10 @@ export class WhatsAppWebhookController {
 
   @Get()
   verify(@Query() query: WhatsAppVerificationQuery, @Res() reply: FastifyReply): void {
-    const challenge = this.webhookService.verify(query['hub.mode'], query['hub.verify_token'], query['hub.challenge']);
+    const mode = query['hub.mode'] ?? query.hub_mode;
+    const token = query['hub.verify_token'] ?? query.hub_verify_token;
+    const challengeValue = query['hub.challenge'] ?? query.hub_challenge;
+    const challenge = this.webhookService.verify(mode, token, challengeValue);
     reply.status(200).type('text/plain').send(challenge);
   }
 
