@@ -4,7 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import multipart from '@fastify/multipart';
-import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { FastifyIoAdapter } from './infra/adapters/fastify-io.adapter';
 import { AppModule } from './app.module';
@@ -59,12 +59,10 @@ async function bootstrap() {
   app.useWebSocketAdapter(new FastifyIoAdapter(app));
 
   // ── Global prefix ──────────────────────────────────────────────────────────
-  app.setGlobalPrefix('api/v1', {
-    exclude: [
-      { path: 'webhooks/whatsapp', method: RequestMethod.GET },
-      { path: 'webhooks/whatsapp', method: RequestMethod.POST },
-    ],
-  });
+  // O webhook permanece público por meio do decorator @Public(), mas mantém
+  // o mesmo prefixo versionado das demais rotas para evitar divergência entre
+  // a URL publicada e a URL cadastrada no painel da Meta.
+  app.setGlobalPrefix('api/v1');
 
   // ── CORS ───────────────────────────────────────────────────────────────────
   app.enableCors(buildCorsOptions());
