@@ -8,6 +8,7 @@ import { RolesGuard } from './guards/roles.guard';
 import { PizzeriaContextGuard } from './guards/pizzeria-context.guard';
 import { PizzeriaRolesGuard } from './guards/pizzeria-roles.guard';
 import { SupabaseJwtService } from './supabase-jwt.service';
+import { ChatWhatsAppRateLimitGuard } from '../../core/guards/chat-whatsapp-rate-limit.guard';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SupabaseJwtService } from './supabase-jwt.service';
     { provide: APP_GUARD, useClass: PizzeriaContextGuard },
     { provide: APP_GUARD, useClass: PizzeriaRolesGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: ChatWhatsAppRateLimitGuard },
   ],
   exports: [AuthService, SupabaseJwtService, JwtModule],
 })

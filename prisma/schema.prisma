@@ -105,9 +105,9 @@ enum DeliveryZoneType {
 
 /// Regra de cálculo de preço para pizzas com múltiplos sabores (RN01)
 enum FlavorPriceRule {
-  highest  /// (A) Preço do sabor mais caro — padrão
-  average  /// (B) Média dos preços dos sabores
-  fixed    /// (C) Preço fixo do tamanho selecionado
+  highest /// (A) Preço do sabor mais caro — padrão
+  average /// (B) Média dos preços dos sabores
+  fixed /// (C) Preço fixo do tamanho selecionado
 }
 
 enum KdsItemStatus {
@@ -116,37 +116,103 @@ enum KdsItemStatus {
   done
 }
 
+enum WhatsAppAccountStatus {
+  pending
+  active
+  suspended
+  inactive
+}
+
+enum ChatChannel {
+  internal
+  whatsapp
+}
+
+enum ChatMessageDirection {
+  inbound
+  outbound
+}
+
+enum ChatMessageType {
+  text
+  image
+  audio
+  video
+  document
+  location
+  sticker
+  reaction
+  template
+  unknown
+}
+
+enum ChatMessageStatus {
+  queued
+  processing
+  sent
+  delivered
+  read
+  failed
+}
+
+enum ChatConversationStatus {
+  open
+  pending
+  closed
+}
+
+enum ChatAssignmentStatus {
+  unassigned
+  assigned
+}
+
+enum WhatsAppTemplateCategory {
+  marketing
+  utility
+  authentication
+}
+
+enum WhatsAppTemplateStatus {
+  pending
+  approved
+  rejected
+  paused
+  disabled
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Usuários do sistema (proprietários, operadores e clientes)
 model User {
-  id           String   @id @default(uuid())
-  name         String   @db.VarChar(100)
-  email        String   @unique @db.VarChar(150)
-  passwordHash String?  @map("password_hash")
-  role         UserRole
-  phone        String?  @db.VarChar(20)
-  cpf          String?  @unique @db.VarChar(11)
-  street       String?  @db.VarChar(150)
-  addressNumber String? @map("address_number") @db.VarChar(20)
-  neighborhood String?  @db.VarChar(100)
-  zipCode      String?  @map("zip_code") @db.VarChar(8)
-  city         String?  @db.VarChar(100)
-  state        String?  @db.VarChar(2)
-  country      String?  @db.VarChar(100)
-  avatarUrl    String?  @map("avatar_url")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  name          String   @db.VarChar(100)
+  email         String   @unique @db.VarChar(150)
+  passwordHash  String?  @map("password_hash")
+  role          UserRole
+  phone         String?  @db.VarChar(20)
+  cpf           String?  @unique @db.VarChar(11)
+  street        String?  @db.VarChar(150)
+  addressNumber String?  @map("address_number") @db.VarChar(20)
+  neighborhood  String?  @db.VarChar(100)
+  zipCode       String?  @map("zip_code") @db.VarChar(8)
+  city          String?  @db.VarChar(100)
+  state         String?  @db.VarChar(2)
+  country       String?  @db.VarChar(100)
+  avatarUrl     String?  @map("avatar_url")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  ownedPizzerias     Pizzeria[]         @relation("PizzeriaOwner")
-  pizzeriaRoles      UserPizzeriaRole[]
-  openedCashSessions CashSession[]      @relation("CashOpener")
-  closedCashSessions CashSession[]      @relation("CashCloser")
-  auditLogs          AuditLog[]
-  refreshTokens      RefreshToken[]
-  delivererProfiles  Deliverer[]
+  ownedPizzerias              Pizzeria[]         @relation("PizzeriaOwner")
+  pizzeriaRoles               UserPizzeriaRole[]
+  openedCashSessions          CashSession[]      @relation("CashOpener")
+  closedCashSessions          CashSession[]      @relation("CashCloser")
+  auditLogs                   AuditLog[]
+  refreshTokens               RefreshToken[]
+  delivererProfiles           Deliverer[]
+  assignedChatConversations   ChatConversation[] @relation("ChatConversationAssignee")
+  assignedChatConversationsBy ChatConversation[] @relation("ChatConversationAssigner")
 
   @@map("users")
 }
@@ -181,28 +247,30 @@ model Pizzeria {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
-  owner           User               @relation("PizzeriaOwner", fields: [ownerId], references: [id])
-  userRoles       UserPizzeriaRole[]
-  config          PizzeriaConfig?
-  categories      ProductCategory[]
-  products        Product[]
-  crusts          Crust[]
-  combos          Combo[]
-  customers       Customer[]
-  tables          Table[]
-  deliverers      Deliverer[]
-  deliveryZones   DeliveryZone[]
-  orders          Order[]
-  stockItems      StockItem[]
-  suppliers       Supplier[]
-  cashSessions    CashSession[]
-  loyaltyPrograms LoyaltyProgram[]
-  coupons         Coupon[]
-  conversations   ChatConversation[]
-  chatTemplates   ChatTemplate[]
-  printers        Printer[]
-  auditLogs       AuditLog[]
-  kdsItems        KdsItem[]
+  owner            User               @relation("PizzeriaOwner", fields: [ownerId], references: [id])
+  userRoles        UserPizzeriaRole[]
+  config           PizzeriaConfig?
+  categories       ProductCategory[]
+  products         Product[]
+  crusts           Crust[]
+  combos           Combo[]
+  customers        Customer[]
+  tables           Table[]
+  deliverers       Deliverer[]
+  deliveryZones    DeliveryZone[]
+  orders           Order[]
+  stockItems       StockItem[]
+  suppliers        Supplier[]
+  cashSessions     CashSession[]
+  loyaltyPrograms  LoyaltyProgram[]
+  coupons          Coupon[]
+  conversations    ChatConversation[]
+  chatTemplates    ChatTemplate[]
+  whatsappTemplates WhatsAppTemplate[]
+  printers         Printer[]
+  auditLogs        AuditLog[]
+  kdsItems         KdsItem[]
+  whatsappAccounts WhatsAppAccount[]
 
   @@map("pizzerias")
 }
@@ -238,10 +306,10 @@ model PizzeriaConfig {
   pizzaPricingRule    String   @default("most_expensive") @map("pizza_pricing_rule")
   paymentMethods      Json     @default("[\"cash\",\"pix\",\"credit\",\"debit\"]") @map("payment_methods")
   businessHours       Json     @map("business_hours")
-  autoMessages          Json?    @map("auto_messages")
-  pixKey                String?  @map("pix_key") @db.VarChar(150)
-  requireOpenCashier    Boolean  @default(false) @map("require_open_cashier")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  autoMessages        Json?    @map("auto_messages")
+  pixKey              String?  @map("pix_key") @db.VarChar(150)
+  requireOpenCashier  Boolean  @default(false) @map("require_open_cashier")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
 
@@ -250,15 +318,15 @@ model PizzeriaConfig {
 
 /// Categorias do cardápio (Pizzas, Bebidas, Entradas…)
 model ProductCategory {
-  id            String  @id @default(uuid())
-  pizzeriaId    String  @map("pizzeria_id")
-  name          String  @db.VarChar(100)
-  slug          String  @db.VarChar(100)
-  sortOrder     Int     @default(0) @map("sort_order")
-  isActive      Boolean @default(true) @map("is_active")
-  availableFrom   String?  @map("available_from")
-  availableTo     String?  @map("available_to")
-  requiresKitchen Boolean  @default(true) @map("requires_kitchen")
+  id              String  @id @default(uuid())
+  pizzeriaId      String  @map("pizzeria_id")
+  name            String  @db.VarChar(100)
+  slug            String  @db.VarChar(100)
+  sortOrder       Int     @default(0) @map("sort_order")
+  isActive        Boolean @default(true) @map("is_active")
+  availableFrom   String? @map("available_from")
+  availableTo     String? @map("available_to")
+  requiresKitchen Boolean @default(true) @map("requires_kitchen")
 
   products Product[]
   pizzeria Pizzeria  @relation(fields: [pizzeriaId], references: [id])
@@ -269,18 +337,18 @@ model ProductCategory {
 
 /// Produtos do cardápio
 model Product {
-  id              String   @id @default(uuid())
-  pizzeriaId      String   @map("pizzeria_id")
-  categoryId      String   @map("category_id")
-  name            String   @db.VarChar(100)
+  id              String          @id @default(uuid())
+  pizzeriaId      String          @map("pizzeria_id")
+  categoryId      String          @map("category_id")
+  name            String          @db.VarChar(100)
   description     String?
-  imageUrl        String?  @map("image_url")
-  isActive         Boolean          @default(true) @map("is_active")
-  isPizza          Boolean          @default(false) @map("is_pizza")
-  maxFlavors       Int?             @map("max_flavors")
-  flavorPriceRule  FlavorPriceRule  @default(highest) @map("flavor_price_rule")
-  preparationTime  Int?             @map("preparation_time")
-  createdAt        DateTime         @default(now()) @map("created_at")
+  imageUrl        String?         @map("image_url")
+  isActive        Boolean         @default(true) @map("is_active")
+  isPizza         Boolean         @default(false) @map("is_pizza")
+  maxFlavors      Int?            @map("max_flavors")
+  flavorPriceRule FlavorPriceRule @default(highest) @map("flavor_price_rule")
+  preparationTime Int?            @map("preparation_time")
+  createdAt       DateTime        @default(now()) @map("created_at")
 
   pizzeria   Pizzeria        @relation(fields: [pizzeriaId], references: [id])
   category   ProductCategory @relation(fields: [categoryId], references: [id])
@@ -484,7 +552,7 @@ model Deliverer {
   createdAt  DateTime @default(now()) @map("created_at")
 
   pizzeria Pizzeria @relation(fields: [pizzeriaId], references: [id])
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   orders   Order[]
 
   @@unique([pizzeriaId, userId])
@@ -607,14 +675,14 @@ model Order {
 
 /// Itens de cada pedido (com suporte a sabores fracionados)
 model OrderItem {
-  id            String  @id @default(uuid())
-  orderId       String  @map("order_id")
-  productId     String  @map("product_id")
-  productSizeId String? @map("product_size_id")
-  crustId       String? @map("crust_id")
+  id            String    @id @default(uuid())
+  orderId       String    @map("order_id")
+  productId     String    @map("product_id")
+  productSizeId String?   @map("product_size_id")
+  crustId       String?   @map("crust_id")
   quantity      Int
-  unitPrice     Decimal @map("unit_price") @db.Decimal(10, 2)
-  subtotal      Decimal @db.Decimal(10, 2)
+  unitPrice     Decimal   @map("unit_price") @db.Decimal(10, 2)
+  subtotal      Decimal   @db.Decimal(10, 2)
   flavors       Json?
   notes         String?
   cancelledAt   DateTime? @map("cancelled_at")
@@ -731,35 +799,139 @@ model CashWithdrawal {
 
 /// Conversas de chat por cliente
 model ChatConversation {
-  id            String    @id @default(uuid())
-  pizzeriaId    String    @map("pizzeria_id")
-  customerId    String    @map("customer_id")
-  lastMessageAt DateTime? @map("last_message_at")
-  unreadCount   Int       @default(0) @map("unread_count")
-  createdAt     DateTime  @default(now()) @map("created_at")
+  id                String                 @id @default(uuid())
+  pizzeriaId        String                 @map("pizzeria_id")
+  customerId        String                 @map("customer_id")
+  whatsappAccountId String?                @map("whatsapp_account_id")
+  channel           ChatChannel            @default(internal)
+  status            ChatConversationStatus @default(open)
+  assignmentStatus  ChatAssignmentStatus   @default(unassigned) @map("assignment_status")
+  assignedToId      String?                @map("assigned_to_id")
+  assignedAt        DateTime?              @map("assigned_at")
+  assignedById      String?                @map("assigned_by_id")
+  version           Int                    @default(0)
+  lastMessageAt     DateTime?              @map("last_message_at")
+  unreadCount       Int                    @default(0) @map("unread_count")
+  createdAt         DateTime               @default(now()) @map("created_at")
 
-  pizzeria Pizzeria      @relation(fields: [pizzeriaId], references: [id])
-  customer Customer      @relation(fields: [customerId], references: [id])
-  messages ChatMessage[]
+  pizzeria        Pizzeria         @relation(fields: [pizzeriaId], references: [id])
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  whatsappAccount WhatsAppAccount? @relation(fields: [whatsappAccountId], references: [id])
+  assignedTo      User?            @relation("ChatConversationAssignee", fields: [assignedToId], references: [id])
+  assignedBy      User?            @relation("ChatConversationAssigner", fields: [assignedById], references: [id])
+  messages        ChatMessage[]
 
   @@unique([pizzeriaId, customerId])
+  @@index([pizzeriaId, channel])
+  @@index([pizzeriaId, lastMessageAt])
+  @@index([whatsappAccountId])
+  @@index([pizzeriaId, status])
+  @@index([pizzeriaId, assignmentStatus])
+  @@index([assignedToId])
   @@map("chat_conversations")
 }
 
 /// Mensagens do chat interno
 model ChatMessage {
-  id             String   @id @default(uuid())
-  conversationId String   @map("conversation_id")
-  content        String
+  id                String               @id @default(uuid())
+  conversationId    String               @map("conversation_id")
+  content           String
   /// system | attendant | customer
-  senderType     String   @map("sender_type") @db.VarChar(20)
-  senderId       String?  @map("sender_id")
-  isAutomatic    Boolean  @default(false) @map("is_automatic")
-  createdAt      DateTime @default(now()) @map("created_at")
+  senderType        String               @map("sender_type") @db.VarChar(20)
+  senderId          String?              @map("sender_id")
+  isAutomatic       Boolean              @default(false) @map("is_automatic")
+  channel           ChatChannel          @default(internal)
+  direction         ChatMessageDirection @default(outbound)
+  messageType       ChatMessageType      @default(text) @map("message_type")
+  externalMessageId String?              @map("external_message_id") @db.VarChar(255)
+  /// Identificador WAMID da Meta; nullable para preservar mensagens internas.
+  wamid             String?              @unique @db.VarChar(255)
+  status            ChatMessageStatus    @default(sent)
+  statusUpdatedAt   DateTime?            @map("status_updated_at")
+  attempts          Int                 @default(0)
+  nextAttemptAt     DateTime?           @map("next_attempt_at")
+  processingStartedAt DateTime?         @map("processing_started_at")
+  correlationId     String?             @unique @map("correlation_id") @db.VarChar(100)
+  deliveryPayload   Json?               @map("delivery_payload")
+  errorCode         String?              @map("error_code") @db.VarChar(100)
+  errorMessage      String?              @map("error_message") @db.VarChar(500)
+  externalTimestamp DateTime?            @map("external_timestamp")
+  mediaId           String?              @map("media_id") @db.VarChar(255)
+  createdAt         DateTime             @default(now()) @map("created_at")
 
-  conversation ChatConversation @relation(fields: [conversationId], references: [id])
+  conversation ChatConversation        @relation(fields: [conversationId], references: [id])
+  attachments  ChatMessageAttachment[]
 
+  @@index([conversationId, createdAt])
+  @@index([conversationId, status])
+  @@index([externalMessageId])
+  @@index([channel, status])
+  @@index([status, nextAttemptAt])
   @@map("chat_messages")
+}
+
+/// Conta WhatsApp Business associada a uma pizzaria.
+/// Tokens e secrets permanecem na configuração segura do backend.
+model WhatsAppAccount {
+  id                String                @id @default(uuid())
+  pizzeriaId        String                @unique @map("pizzeria_id")
+  businessAccountId String?               @map("business_account_id") @db.VarChar(255)
+  phoneNumberId     String                @unique @map("phone_number_id") @db.VarChar(255)
+  metaAppId         String?               @map("meta_app_id") @db.VarChar(255)
+  status            WhatsAppAccountStatus @default(pending)
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  pizzeria      Pizzeria           @relation(fields: [pizzeriaId], references: [id])
+  conversations ChatConversation[]
+  templates     WhatsAppTemplate[]
+
+  @@index([status])
+  @@map("whatsapp_accounts")
+}
+
+/// Template oficial aprovado/configurado na WhatsApp Business Platform.
+/// É separado de ChatTemplate, que representa apenas quick replies internas.
+model WhatsAppTemplate {
+  id                String                    @id @default(uuid())
+  pizzeriaId        String                    @map("pizzeria_id")
+  whatsappAccountId String                    @map("whatsapp_account_id")
+  name              String                    @db.VarChar(512)
+  language          String                    @db.VarChar(35)
+  category          WhatsAppTemplateCategory
+  status            WhatsAppTemplateStatus    @default(pending)
+  externalId        String?                   @map("external_id") @db.VarChar(255)
+  parameterCount    Int                       @default(0) @map("parameter_count")
+  components        Json?
+  metadata          Json?
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+
+  pizzeria        Pizzeria        @relation(fields: [pizzeriaId], references: [id])
+  whatsappAccount WhatsAppAccount @relation(fields: [whatsappAccountId], references: [id])
+
+  @@unique([whatsappAccountId, name, language])
+  @@index([pizzeriaId, status])
+  @@index([whatsappAccountId, status])
+  @@map("whatsapp_templates")
+}
+
+/// Metadados de mídia. O arquivo e o Storage ainda não são implementados.
+model ChatMessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String   @map("message_id")
+  mediaId     String?  @map("media_id") @db.VarChar(255)
+  fileName    String?  @map("file_name") @db.VarChar(255)
+  mimeType    String?  @map("mime_type") @db.VarChar(100)
+  fileSize    Int?     @map("file_size")
+  storagePath String?  @map("storage_path") @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  message ChatMessage @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
+  @@index([mediaId])
+  @@map("chat_message_attachments")
 }
 
 /// Templates de mensagem rápida
@@ -791,7 +963,6 @@ model Printer {
 
   @@map("printers")
 }
-
 
 /// Log de auditoria de todas as ações sensíveis
 model AuditLog {

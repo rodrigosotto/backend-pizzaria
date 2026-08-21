@@ -4,7 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import multipart from '@fastify/multipart';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { FastifyIoAdapter } from './infra/adapters/fastify-io.adapter';
 import { AppModule } from './app.module';
@@ -13,10 +13,43 @@ import { TransformInterceptor } from './core/interceptors/transform.interceptor'
 import { LoggingInterceptor } from './core/interceptors/logging.interceptor';
 import { buildCorsOptions } from './core/config/cors.config';
 
+type FastifyLogRequest = {
+  method: string;
+  url: string;
+  hostname?: string;
+  remoteAddress?: string;
+  remotePort?: number;
+};
+
+function sanitizeRequestUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl, 'http://localhost');
+    if (url.searchParams.has('hub.verify_token')) {
+      url.searchParams.set('hub.verify_token', '[REDACTED]');
+    }
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return rawUrl.split('?')[0];
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true }),
+    new FastifyAdapter({
+      logger: {
+        serializers: {
+          req: (request: FastifyLogRequest) => ({
+            method: request.method,
+            url: sanitizeRequestUrl(request.url),
+            hostname: request.hostname,
+            remoteAddress: request.remoteAddress,
+            remotePort: request.remotePort,
+          }),
+        },
+      },
+    }),
+    { rawBody: true },
   );
 
   // ── Multipart (file uploads) ───────────────────────────────────────────────
@@ -26,7 +59,12 @@ async function bootstrap() {
   app.useWebSocketAdapter(new FastifyIoAdapter(app));
 
   // ── Global prefix ──────────────────────────────────────────────────────────
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      { path: 'webhooks/whatsapp', method: RequestMethod.GET },
+      { path: 'webhooks/whatsapp', method: RequestMethod.POST },
+    ],
+  });
 
   // ── CORS ───────────────────────────────────────────────────────────────────
   app.enableCors(buildCorsOptions());

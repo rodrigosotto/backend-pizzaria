@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -24,8 +25,12 @@ import { ChatService } from './chat.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { SendTemplateMessageDto } from './dto/send-template-message.dto';
+import { AssignConversationDto } from './dto/assign-conversation.dto';
+import { UpdateConversationStatusDto } from './dto/update-conversation-status.dto';
+import { SendWhatsAppTemplateMessageDto } from './dto/send-whatsapp-template-message.dto';
 import { CurrentUser } from '../modules/auth/decorators/current-user.decorator';
 import { CurrentPizzeria } from '../modules/auth/decorators/current-pizzeria.decorator';
+import { CurrentPizzeriaRole } from '../modules/auth/decorators/current-pizzeria-role.decorator';
 import { RequiresPizzeria } from '../modules/auth/decorators/require-pizzeria.decorator';
 import { PizzeriaRoles } from '../modules/auth/decorators/pizzeria-roles.decorator';
 
@@ -114,6 +119,69 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
     return this.chatService.markAsRead(pizzeriaId, id);
   }
 
+  @Post(':id/assume')
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
+  @ApiOperation({ summary: 'Assumir conversa sem responsável' })
+  assumeConversation(
+    @Param('id') id: string,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.chatService.assumeConversation(pizzeriaId, id, user.sub);
+  }
+
+  @Post(':id/assign')
+  @PizzeriaRoles(PizzeriaUserRole.admin)
+  @ApiOperation({ summary: 'Atribuir conversa a um atendente' })
+  assignConversation(
+    @Param('id') id: string,
+    @Body() dto: AssignConversationDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
+  ) {
+    return this.chatService.assignConversation(pizzeriaId, id, dto, user.sub, role);
+  }
+
+  @Post(':id/transfer')
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
+  @ApiOperation({ summary: 'Transferir conversa para outro atendente' })
+  transferConversation(
+    @Param('id') id: string,
+    @Body() dto: AssignConversationDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
+  ) {
+    return this.chatService.assignConversation(pizzeriaId, id, dto, user.sub, role);
+  }
+
+  @Delete(':id/assignment')
+  @HttpCode(HttpStatus.OK)
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
+  @ApiOperation({ summary: 'Remover responsável da conversa' })
+  unassignConversation(
+    @Param('id') id: string,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
+  ) {
+    return this.chatService.unassignConversation(pizzeriaId, id, user.sub, role);
+  }
+
+  @Patch(':id/status')
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
+  @ApiOperation({ summary: 'Alterar estado da conversa' })
+  updateConversationStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateConversationStatusDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
+  ) {
+    return this.chatService.updateConversationStatus(pizzeriaId, id, dto, user.sub, role);
+  }
+
   // -------------------------------------------------------------------------
   // Mensagens
   // -------------------------------------------------------------------------
@@ -122,16 +190,14 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
   @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
   @ApiOperation({
     summary: 'Enviar mensagem (RF61/RF57/RF59)',
-    description: `Envia uma mensagem na conversa. Suporta texto e emojis (RF61).
+    description: `Envia uma mensagem da equipe na conversa. Suporta texto e emojis (RF61).
 
-**senderType:**
-- \`attendant\` (padrão): mensagem enviada pelo atendente → zera unreadCount
-- \`customer\`: registrar mensagem recebida do cliente → incrementa unreadCount
-- \`system\`: mensagem automática (ex: notificação de status de pedido — RF57)
+O remetente é sempre derivado do usuário autenticado; o cliente não pode
+forjar mensagens de cliente ou de sistema.
 
 **RF59 — Cardápio digital:** envie o link do cardápio no campo \`content\` com \`senderType: "attendant"\`.
 
-**RF57 — Automáticas:** use \`isAutomatic: true\` + \`senderType: "system"\` para mensagens de sistema.`,
+Mensagens automáticas internas são criadas por serviços do backend.`,
   })
   @ApiParam({ name: 'id', description: 'UUID da conversa' })
   @ApiResponse({ status: 201, description: 'Mensagem enviada' })
@@ -141,8 +207,9 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
     @Body() dto: SendMessageDto,
     @CurrentPizzeria() pizzeriaId: string,
     @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
   ) {
-    return this.chatService.sendMessage(pizzeriaId, id, dto, user.sub);
+    return this.chatService.sendMessage(pizzeriaId, id, dto, user.sub, role);
   }
 
   @Post(':id/messages/template')
@@ -159,8 +226,25 @@ Garante que cada cliente tem no máximo uma conversa ativa por pizzaria.`,
     @Body() dto: SendTemplateMessageDto,
     @CurrentPizzeria() pizzeriaId: string,
     @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
   ) {
-    return this.chatService.sendTemplateMessage(pizzeriaId, id, dto, user.sub);
+    return this.chatService.sendTemplateMessage(pizzeriaId, id, dto, user.sub, role);
+  }
+
+  @Post(':id/messages/whatsapp-template')
+  @PizzeriaRoles(PizzeriaUserRole.admin, PizzeriaUserRole.atendente)
+  @ApiOperation({ summary: 'Enviar template oficial da WhatsApp Business Platform' })
+  @ApiParam({ name: 'id', description: 'UUID da conversa WhatsApp' })
+  @ApiResponse({ status: 201, description: 'Template oficial enviado' })
+  @ApiResponse({ status: 400, description: 'Parâmetros inválidos ou fora da janela de atendimento' })
+  sendWhatsAppTemplateMessage(
+    @Param('id') id: string,
+    @Body() dto: SendWhatsAppTemplateMessageDto,
+    @CurrentPizzeria() pizzeriaId: string,
+    @CurrentUser() user: JwtPayload,
+    @CurrentPizzeriaRole() role: PizzeriaUserRole,
+  ) {
+    return this.chatService.sendWhatsAppTemplateMessage(pizzeriaId, id, dto, user.sub, role);
   }
 
   @Get(':id/messages')
